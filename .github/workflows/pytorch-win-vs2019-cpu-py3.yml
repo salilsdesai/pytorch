@@ -31,6 +31,7 @@ concurrency:
 jobs:
   build:
     runs-on: "windows.4xlarge"
+    needs: []
     env:
       JOB_BASE_NAME: pytorch-win-vs2019-cpu-py3-build
     steps:
@@ -80,6 +81,7 @@ jobs:
 
   generate-test-matrix:
     if: ${{ github.repository_owner == 'pytorch' }}
+    needs: []
     runs-on: ubuntu-18.04
     env:
       TEST_RUNNER_TYPE: windows.4xlarge
@@ -103,9 +105,7 @@ jobs:
       JOB_BASE_NAME: pytorch-win-vs2019-cpu-py3-test
       SHARD_NUMBER: ${{ matrix.shard }}
       NUM_TEST_SHARDS: ${{ matrix.num_shards }}
-    needs:
-      - build
-      - generate-test-matrix
+    needs: [build, generate-test-matrix, ]
     strategy:
       matrix: ${{ fromJson(needs.generate-test-matrix.outputs.matrix) }}
       fail-fast: false
@@ -172,9 +172,7 @@ jobs:
   # doesn't create the best experience
   render_test_results:
     if: always()
-    needs:
-      - generate-test-matrix
-      - test
+    needs: [generate-test-matrix, test, ]
     runs-on: linux.2xlarge
     strategy:
       matrix: ${{ fromJson(needs.generate-test-matrix.outputs.render-matrix) }}
