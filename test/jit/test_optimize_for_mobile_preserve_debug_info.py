@@ -4,6 +4,44 @@ from torch.testing import FileCheck
 from torch.testing._internal.jit_utils import JitTestCase
 
 class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
+    def check_replacement(
+        self,
+        model_class,
+        model_args_shapes,
+        x_shape,
+        replacements,
+        jit_pass,
+    ):
+        model_args = [torch.rand(shape) for shape in model_args_shapes]
+        x = torch.rand(x_shape)
+        model = torch.jit.script(model_class(*model_args))
+
+        original_kinds = set(replacements.values())
+        source_ranges = {
+            node.kind(): node.sourceRange()
+            for node in model.graph.nodes()
+            if node.kind() in original_kinds
+        }
+
+        jit_pass(model.graph)
+
+        for node in model.graph.nodes():
+            if node.kind() in replacements:
+                self.assertEqual(
+                    node.sourceRange(),
+                    source_ranges[replacements[node.kind()]],
+                )
+
+        check_replaced = FileCheck()
+        for kind in original_kinds:
+            check_replaced = check_replaced.check_not(kind)
+        for kind in replacements:
+            check_replaced = check_replaced.check(kind)
+        check_replaced.run(model.graph)
+
+        # make sure it runs
+        model(x)
+
     def test_replace_conv1d_with_conv2d(self):
         class TestConv1d(torch.nn.Module):
             def __init__(self, weight, bias):
@@ -14,26 +52,42 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
             def forward(self, x):
                 return torch.nn.functional.conv1d(x, self.weight, self.bias)
 
-        w = torch.rand(3, 3, 3)
-        b = torch.rand(3)
-        x = torch.rand(3, 3, 3)
-        model = torch.jit.script(TestConv1d(w, b))
+        self.check_replacement(
+            model_class=TestConv1d,
+            model_args_shapes=[(3, 3, 3), 3],
+            x_shape=(3, 3, 3),
+            replacements={
+                "prim::ListUnpack": "aten::conv1d",
+                "prim::ListConstruct": "aten::conv1d",
+                "aten::unsqueeze": "aten::conv1d",
+                "aten::conv2d": "aten::conv1d",
+                "aten::squeeze": "aten::conv1d",
+            },
+            jit_pass=torch._C._jit_pass_transform_conv1d_to_conv2d,
+        )
 
-        for node in model.graph.nodes():
-            if node.kind() == "aten::conv1d":
-                source_range_1 = node.sourceRange()
+    # TODO: Fix this test
+    def insert_pre_packed_linear_op_before_inline(self):
+        class TestLinearOpBeforeInline(torch.nn.Module):
+            def __init__(self, weight, bias):
+                super(TestLinearOpBeforeInline, self).__init__()
+                self.weight = weight
+                self.bias = bias
 
-        torch._C._jit_pass_transform_conv1d_to_conv2d(model.graph)
+            @staticmethod
+            def linear(x, weight, bias):
+                return torch.nn.functional.linear(x, weight, bias)
 
-        for node in model.graph.nodes():
-            if node.kind() == "aten::conv2d":
-                source_range_2 = node.sourceRange()
+            def forward(self, x):
+                return TestLinearOpBeforeInline.linear(x, self.weight, self.bias)
 
-        FileCheck().check("aten::conv2d").run(model.graph)
-        check_not = ["aten::conv1d"]
-        for cn in check_not:
-            FileCheck().check_not(cn).run(model.graph)
-
-        # make sure it runs
-        self.assertTrue(source_range_1 == source_range_2)
-        model(x)
+        self.check_replacement(
+            model_class=TestLinearOpBeforeInline,
+            model_args_shapes=[(4, 3), 4],
+            x_shape=(5, 2, 3),
+            replacements={
+                "prepacked::linear_clamp_prepack": "prim::CallFunction",
+                "prepacked::linear_clamp_run": "prim::CallFunction"
+            },
+            jit_pass=torch._C._jit_pass_insert_prepacked_ops,
+        )
