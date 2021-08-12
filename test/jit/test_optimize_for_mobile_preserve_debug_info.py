@@ -102,3 +102,40 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
             },
             jit_pass=torch._C._jit_pass_insert_prepacked_ops,
         )
+
+    # TODO: Fix this test
+    def insert_prepacked_conv2d_op(self):
+        class TestConv2d(torch.nn.Module):
+            def __init__(self, weight, bias):
+                super(TestConv2d, self).__init__()
+                self.weight = weight
+                self.bias = bias
+
+            def forward(self, x):
+                return torch.nn.functional.conv2d(
+                    input=x,
+                    weight=self.weight,
+                    bias=self.bias,
+                )
+
+        minibatch = 1
+        in_channels = 6
+        iH = 4
+        iW = 5
+        out_channels = 7
+        groups = 2
+        kH = 8
+        kW = 9
+        weight = torch.rand(out_channels, in_channels, kH, kW)
+        bias = torch.rand(out_channels)
+
+        self.check_replacement(
+            model=TestConv2d(weight, bias),
+            x_shape=(minibatch, in_channels, iH, iW),
+            use_trace=False,
+            replacements={
+                "prepacked::conv2d_clamp_prepack": "aten::conv2d",
+                "prepacked::conv2d_clamp_run": "aten::conv2d",
+            },
+            jit_pass=torch._C._jit_pass_insert_prepacked_ops,
+        )
