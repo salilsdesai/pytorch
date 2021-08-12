@@ -6,16 +6,18 @@ from torch.testing._internal.jit_utils import JitTestCase
 class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
     def test_replace_conv1d_with_conv2d(self):
         class TestConv1d(torch.nn.Module):
-            def __init__(self, weight):
+            def __init__(self, weight, bias):
                 super(TestConv1d, self).__init__()
                 self.weight = weight
+                self.bias = bias
 
             def forward(self, x):
-                return torch.nn.functional.conv1d(x, self.weight)
+                return torch.nn.functional.conv1d(x, self.weight, self.bias)
 
-        tc = TestConv1d(torch.rand(3, 3, 3))
+        w = torch.rand(3, 3, 3)
+        b = torch.rand(3)
         x = torch.rand(3, 3, 3)
-        model = torch.jit.script(tc)
+        model = torch.jit.script(TestConv1d(w, b))
 
         for node in model.graph.nodes():
             if node.kind() == "aten::conv1d":
