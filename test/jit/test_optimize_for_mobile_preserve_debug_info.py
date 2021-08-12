@@ -3,6 +3,11 @@ import torch._C
 from torch.testing import FileCheck
 from torch.testing._internal.jit_utils import JitTestCase
 
+def print_graph(m):
+    for node in m.graph.nodes():
+        print(node.kind())
+    print('--------')
+
 class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
     def check_replacement(
         self,
@@ -27,7 +32,7 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
             check_original = check_original.check(kind)
         check_original.run(model.graph)
 
-        jit_pass(model.graph)
+        jit_pass(model._c)
 
         for node in model.graph.nodes():
             if node.kind() in replacements:
@@ -38,7 +43,8 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
 
         check_replaced = FileCheck()
         for kind in original_kinds:
-            check_replaced = check_replaced.check_not(kind)
+            if kind not in replacements:
+                check_replaced = check_replaced.check_not(kind)
         for kind in replacements:
             check_replaced = check_replaced.check(kind)
         check_replaced.run(model.graph)
@@ -46,7 +52,8 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
         # make sure it runs
         model(x)
 
-    def test_replace_conv1d_with_conv2d(self):
+    # 66
+    def replace_conv1d_with_conv2d(self):
         class TestConv1d(torch.nn.Module):
             def __init__(self, weight, bias):
                 super(TestConv1d, self).__init__()
@@ -70,6 +77,7 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
             jit_pass=torch._C._jit_pass_transform_conv1d_to_conv2d,
         )
 
+    # 137
     # TODO: Fix this test
     def insert_pre_packed_linear_op_before_inline(self):
         class TestLinearOpBeforeInline(torch.nn.Module):
@@ -96,7 +104,8 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
             jit_pass=torch._C._jit_pass_insert_prepacked_ops,
         )
 
-    def test_insert_pre_packed_linear_op(self):
+    # 147
+    def insert_pre_packed_linear_op(self):
         self.check_replacement(
             model=torch.nn.Linear(5, 4),
             x_shape=(3, 2, 5),
@@ -108,6 +117,7 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
             jit_pass=torch._C._jit_pass_insert_prepacked_ops,
         )
 
+    # 176
     # TODO: Fix this test
     def insert_prepacked_conv2d_op(self):
         class TestConv2d(torch.nn.Module):
@@ -145,6 +155,7 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
             jit_pass=torch._C._jit_pass_insert_prepacked_ops,
         )
 
+    # 198
     # TODO: Fix this test
     def insert_prepacked_conv_transpose2d_op(self):
         class TestConvTranspose2d(torch.nn.Module):
@@ -181,3 +192,80 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
             },
             jit_pass=torch._C._jit_pass_insert_prepacked_ops,
         )
+
+    # 235
+    # TODO: Fix this test
+    def fuse_hardtanh_with_pack_ops_linear(self):
+        """
+        %linear_res = prepacked::linear_clamp_run(%input, %packed_weight_bias)
+        %res = aten::hardtanh(%linear_res, %output_min, %output_max)
+
+        %res = prepacked::linear_clamp_run(%input, %packed_weight_bias)
+        """
+        class TestLinearWithHardtanh(torch.nn.Module):
+            def __init__(self, in_features, out_features):
+                super(TestLinearWithHardtanh, self).__init__()
+                self.in_features = in_features
+                self.out_features = out_features
+
+            def forward(self, x):
+                x = torch.nn.Linear(self.in_features, self.out_features)(x)
+                return torch.nn.functional.hardtanh(x)
+
+        x_shape = (3, 2, 5)
+        model = torch.jit.trace(TestLinearWithHardtanh(5, 4), torch.rand(x_shape))
+        torch._C._jit_pass_insert_prepacked_ops(model._c)
+        model.eval()
+
+        self.check_replacement(
+            model=model,
+            x_shape=x_shape,
+            use_trace=True,
+            replacements={
+                "prepacked::linear_clamp_run": "prepacked::linear_clamp_run",
+                "prepacked::linear_clamp_prepack": "prepacked::linear_clamp_prepack",
+            },
+            jit_pass=torch._C._jit_pass_fuse_clamp_w_prepacked_linear_conv,
+        )
+
+    #253
+    # TODO: Fix this test
+    def test_fuse_hardtanh_with_pack_ops_conv2d(self):
+        class TestConv2dWithHardtanh(torch.nn.Module):
+            def __init__(self, in_channels, out_channels, kernel):
+                super(TestConv2dWithHardtanh, self).__init__()
+                self.in_channels = in_channels
+                self.out_channels = out_channels
+                self.kernel = kernel
+
+            def forward(self, x):
+                x = torch.nn.Conv2d(
+                    in_channels=self.in_channels,
+                    out_channels=self.out_channels,
+                    kernel_size=self.kernel,
+                )(x)
+                return torch.nn.functional.hardtanh(x)
+
+        x_shape = (4, 5, 2, 2)
+        model = torch.jit.trace(TestConv2dWithHardtanh(5, 4, 2), torch.rand(x_shape))
+        torch._C._jit_pass_insert_prepacked_ops(model._c)
+
+        print_graph(model)
+
+        self.check_replacement(
+            model=model,
+            x_shape=x_shape,
+            use_trace=True,
+            replacements={
+                "prepacked::conv2d_clamp_run": "prepacked::conv2d_clamp_run",
+                "prepacked::conv2d_clamp_prepack": "prepacked::conv2d_clamp_prepack",
+            },
+            jit_pass=torch._C._jit_pass_fuse_clamp_w_prepacked_linear_conv,
+        )
+
+# 279
+# 287
+# 332
+# 351
+# 378
+# 389
