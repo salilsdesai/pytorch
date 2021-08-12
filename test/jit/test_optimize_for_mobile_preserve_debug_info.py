@@ -6,15 +6,14 @@ from torch.testing._internal.jit_utils import JitTestCase
 class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
     def check_replacement(
         self,
-        model_class,
-        model_args_shapes,
+        model,
         x_shape,
+        use_trace,
         replacements,
         jit_pass,
     ):
-        model_args = [torch.rand(shape) for shape in model_args_shapes]
         x = torch.rand(x_shape)
-        model = torch.jit.script(model_class(*model_args))
+        model = torch.jit.trace(model, x) if use_trace else torch.jit.script(model)
 
         original_kinds = set(replacements.values())
         source_ranges = {
@@ -53,9 +52,9 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
                 return torch.nn.functional.conv1d(x, self.weight, self.bias)
 
         self.check_replacement(
-            model_class=TestConv1d,
-            model_args_shapes=[(3, 3, 3), 3],
+            model=TestConv1d(torch.rand(3, 3, 3), torch.rand(3)),
             x_shape=(3, 3, 3),
+            use_trace=False,
             replacements={
                 "prim::ListUnpack": "aten::conv1d",
                 "prim::ListConstruct": "aten::conv1d",
@@ -82,12 +81,24 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
                 return TestLinearOpBeforeInline.linear(x, self.weight, self.bias)
 
         self.check_replacement(
-            model_class=TestLinearOpBeforeInline,
-            model_args_shapes=[(4, 3), 4],
+            model=TestLinearOpBeforeInline(torch.rand(4, 3), torch.rand(4)),
             x_shape=(5, 2, 3),
+            use_trace=False,
             replacements={
                 "prepacked::linear_clamp_prepack": "prim::CallFunction",
                 "prepacked::linear_clamp_run": "prim::CallFunction"
+            },
+            jit_pass=torch._C._jit_pass_insert_prepacked_ops,
+        )
+
+    def test_insert_pre_packed_linear_op(self):
+        self.check_replacement(
+            model=torch.nn.Linear(5, 4),
+            x_shape=(3, 2, 5),
+            use_trace=True,
+            replacements={
+                "prepacked::linear_clamp_prepack": "aten::linear",
+                "prepacked::linear_clamp_run": "aten::linear"
             },
             jit_pass=torch._C._jit_pass_insert_prepacked_ops,
         )
