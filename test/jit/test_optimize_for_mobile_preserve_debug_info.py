@@ -287,7 +287,7 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
         )
 
     # 279
-    def test_fuse_hardtanh_with_pack_ops_linear_inplace(self):
+    def test_fuse_hardtanh_with_pack_ops_linear_in_place(self):
         """
         %packed_weight_bias = prepacked::linear_clamp_prepack(
             %weight, %bias, %dummy_min_max, %dummy_min_max)
@@ -319,6 +319,39 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
             replacements={
                 "prepacked::linear_clamp_run": "prepacked::linear_clamp_run",
                 "prepacked::linear_clamp_prepack": "prepacked::linear_clamp_prepack",
+            },
+            other_removed=["aten::hardtanh_"],
+            jit_pass=torch._C._jit_pass_fuse_clamp_w_prepacked_linear_conv,
+        )
+
+    #287
+    def test_fuse_hardtanh_with_pack_ops_conv2d_in_place(self):
+        class TestConv2dWithHardtanhInPlace(torch.nn.Module):
+            def __init__(self, in_channels, out_channels, kernel):
+                super(TestConv2dWithHardtanhInPlace, self).__init__()
+                self.in_channels = in_channels
+                self.out_channels = out_channels
+                self.kernel = kernel
+
+            def forward(self, x):
+                x = torch.nn.Conv2d(
+                    in_channels=self.in_channels,
+                    out_channels=self.out_channels,
+                    kernel_size=self.kernel,
+                )(x)
+                return torch.nn.functional.hardtanh_(x)
+
+        x_shape = (4, 5, 2, 2)
+        model = torch.jit.trace(TestConv2dWithHardtanhInPlace(5, 4, 2), torch.rand(x_shape))
+        torch._C._jit_pass_insert_prepacked_ops(model._c)
+
+        self.check_replacement(
+            model=model,
+            x_shape=x_shape,
+            use_trace=True,
+            replacements={
+                "prepacked::conv2d_clamp_run": "prepacked::conv2d_clamp_run",
+                "prepacked::conv2d_clamp_prepack": "prepacked::conv2d_clamp_prepack",
             },
             other_removed=["aten::hardtanh_"],
             jit_pass=torch._C._jit_pass_fuse_clamp_w_prepacked_linear_conv,
