@@ -15,8 +15,18 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
         x_shape,
         use_trace,
         replacements,
+        other_removed,
         jit_pass,
     ):
+        """
+        model: Model which optimization is performed on
+        x_shape: Shape of a potential input the the model
+        use_trace: If true, use torch.jit.trace, else use torch.jit.script
+        replacements: Dict mapping from nodes' kinds in the optimized model
+            to the kinds of nodes they replaced in the original model
+        other_removed: List of kinds removed by the optimization
+        jit_pass: Function to perform optimization
+        """
         x = torch.rand(x_shape)
         model = torch.jit.trace(model, x) if use_trace else torch.jit.script(model)
 
@@ -27,10 +37,9 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
             if node.kind() in original_kinds
         }
 
-        check_original = FileCheck()
-        for kind in original_kinds:
-            check_original = check_original.check(kind)
-        check_original.run(model.graph)
+        model_kinds = set([n.kind() for n in model.graph.nodes()])
+        for kind in original_kinds.union(other_removed):
+            self.assertIn(kind, model_kinds)
 
         jit_pass(model._c)
 
@@ -41,19 +50,18 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
                     source_ranges[replacements[node.kind()]],
                 )
 
-        check_replaced = FileCheck()
-        for kind in original_kinds:
+        model_kinds = set([n.kind() for n in model.graph.nodes()])
+        for kind in original_kinds.union(other_removed):
             if kind not in replacements:
-                check_replaced = check_replaced.check_not(kind)
+                self.assertNotIn(kind, model_kinds)
         for kind in replacements:
-            check_replaced = check_replaced.check(kind)
-        check_replaced.run(model.graph)
+            self.assertIn(kind, model_kinds)
 
         # make sure it runs
         model(x)
 
     # 66
-    def replace_conv1d_with_conv2d(self):
+    def test_replace_conv1d_with_conv2d(self):
         class TestConv1d(torch.nn.Module):
             def __init__(self, weight, bias):
                 super(TestConv1d, self).__init__()
@@ -74,11 +82,11 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
                 "aten::conv2d": "aten::conv1d",
                 "aten::squeeze": "aten::conv1d",
             },
+            other_removed=[],
             jit_pass=torch._C._jit_pass_transform_conv1d_to_conv2d,
         )
 
-    # 137
-    # TODO: Fix this test
+    # 137 TODO: Fix linear failing
     def insert_pre_packed_linear_op_before_inline(self):
         class TestLinearOpBeforeInline(torch.nn.Module):
             def __init__(self, weight, bias):
@@ -101,11 +109,12 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
                 "prepacked::linear_clamp_prepack": "prim::CallFunction",
                 "prepacked::linear_clamp_run": "prim::CallFunction"
             },
+            other_removed=[],
             jit_pass=torch._C._jit_pass_insert_prepacked_ops,
         )
 
     # 147
-    def insert_pre_packed_linear_op(self):
+    def test_insert_pre_packed_linear_op(self):
         self.check_replacement(
             model=torch.nn.Linear(5, 4),
             x_shape=(3, 2, 5),
@@ -114,11 +123,11 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
                 "prepacked::linear_clamp_prepack": "aten::linear",
                 "prepacked::linear_clamp_run": "aten::linear"
             },
+            other_removed=[],
             jit_pass=torch._C._jit_pass_insert_prepacked_ops,
         )
 
-    # 176
-    # TODO: Fix this test
+    # 176 TODO: Fix convolution failing
     def insert_prepacked_conv2d_op(self):
         class TestConv2d(torch.nn.Module):
             def __init__(self, weight, bias):
@@ -152,11 +161,11 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
                 "prepacked::conv2d_clamp_prepack": "aten::conv2d",
                 "prepacked::conv2d_clamp_run": "aten::conv2d",
             },
+            other_removed=[],
             jit_pass=torch._C._jit_pass_insert_prepacked_ops,
         )
 
-    # 198
-    # TODO: Fix this test
+    # 198 TODO: Fix convolution failing
     def insert_prepacked_conv_transpose2d_op(self):
         class TestConvTranspose2d(torch.nn.Module):
             def __init__(self, weight, bias):
@@ -190,16 +199,20 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
                 "prepacked::conv2d_transpose_clamp_prepack": "aten::conv_transpose2d",
                 "prepacked::conv2d_transpose_clamp_run": "aten::conv_transpose2d",
             },
+            other_removed=[],
             jit_pass=torch._C._jit_pass_insert_prepacked_ops,
         )
 
     # 235
-    # TODO: Fix this test
-    def fuse_hardtanh_with_pack_ops_linear(self):
+    def test_fuse_hardtanh_with_pack_ops_linear(self):
         """
+        %packed_weight_bias = prepacked::linear_clamp_prepack(
+            %weight, %bias, %dummy_min_max, %dummy_min_max)
         %linear_res = prepacked::linear_clamp_run(%input, %packed_weight_bias)
         %res = aten::hardtanh(%linear_res, %output_min, %output_max)
 
+        %packed_weight_bias : __torch__.torch.classes.xnnpack.LinearOpContext = prepacked::linear_clamp_prepack(
+            %weight, %bias, %output_min, %output_max)
         %res = prepacked::linear_clamp_run(%input, %packed_weight_bias)
         """
         class TestLinearWithHardtanh(torch.nn.Module):
@@ -215,7 +228,6 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
         x_shape = (3, 2, 5)
         model = torch.jit.trace(TestLinearWithHardtanh(5, 4), torch.rand(x_shape))
         torch._C._jit_pass_insert_prepacked_ops(model._c)
-        model.eval()
 
         self.check_replacement(
             model=model,
@@ -225,12 +237,24 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
                 "prepacked::linear_clamp_run": "prepacked::linear_clamp_run",
                 "prepacked::linear_clamp_prepack": "prepacked::linear_clamp_prepack",
             },
+            other_removed=["aten::hardtanh"],
             jit_pass=torch._C._jit_pass_fuse_clamp_w_prepacked_linear_conv,
         )
 
     #253
-    # TODO: Fix this test
     def test_fuse_hardtanh_with_pack_ops_conv2d(self):
+        """
+        %packed_weight_bias = prepacked::conv2d_clamp_prepack(
+            %weight, %bias, %stride, %padding, %dilation, %groups,
+            %dummy_min_max, %dummy_min_max)
+        %conv2d_res = prepacked::conv2d_clamp_run(%input, %packed_weight_bias)
+        %res = aten::hardtanh(%conv2d_res, %output_min, %output_max)
+
+        %packed_weight_bias : __torch__.torch.classes.xnnpack.Conv2dOpContext = prepacked::conv2d_clamp_prepack(
+            %weight, %bias, %stride, %padding, %dilation, %groups,
+            %output_min, %output_max)
+        %res = prepacked::conv2d_clamp_run(%input, %packed_weight_bias)
+        """
         class TestConv2dWithHardtanh(torch.nn.Module):
             def __init__(self, in_channels, out_channels, kernel):
                 super(TestConv2dWithHardtanh, self).__init__()
@@ -250,8 +274,6 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
         model = torch.jit.trace(TestConv2dWithHardtanh(5, 4, 2), torch.rand(x_shape))
         torch._C._jit_pass_insert_prepacked_ops(model._c)
 
-        print_graph(model)
-
         self.check_replacement(
             model=model,
             x_shape=x_shape,
@@ -260,10 +282,48 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
                 "prepacked::conv2d_clamp_run": "prepacked::conv2d_clamp_run",
                 "prepacked::conv2d_clamp_prepack": "prepacked::conv2d_clamp_prepack",
             },
+            other_removed=["aten::hardtanh"],
             jit_pass=torch._C._jit_pass_fuse_clamp_w_prepacked_linear_conv,
         )
 
-# 279
+    # 279
+    def test_fuse_hardtanh_with_pack_ops_linear_inplace(self):
+        """
+        %packed_weight_bias = prepacked::linear_clamp_prepack(
+            %weight, %bias, %dummy_min_max, %dummy_min_max)
+        %linear_res = prepacked::linear_clamp_run(%input, %packed_weight_bias)
+        %res = aten::hardtanh_(%linear_res, %output_min, %output_max)
+
+        %packed_weight_bias : __torch__.torch.classes.xnnpack.LinearOpContext = prepacked::linear_clamp_prepack(
+            %weight, %bias, %output_min, %output_max)
+        %res = prepacked::linear_clamp_run(%input, %packed_weight_bias)
+        """
+        class TestLinearWithHardtanhInPlace(torch.nn.Module):
+            def __init__(self, in_features, out_features):
+                super(TestLinearWithHardtanhInPlace, self).__init__()
+                self.in_features = in_features
+                self.out_features = out_features
+
+            def forward(self, x):
+                x = torch.nn.Linear(self.in_features, self.out_features)(x)
+                return torch.nn.functional.hardtanh_(x)
+
+        x_shape = (3, 2, 5)
+        model = torch.jit.trace(TestLinearWithHardtanhInPlace(5, 4), torch.rand(x_shape))
+        torch._C._jit_pass_insert_prepacked_ops(model._c)
+
+        self.check_replacement(
+            model=model,
+            x_shape=x_shape,
+            use_trace=True,
+            replacements={
+                "prepacked::linear_clamp_run": "prepacked::linear_clamp_run",
+                "prepacked::linear_clamp_prepack": "prepacked::linear_clamp_prepack",
+            },
+            other_removed=["aten::hardtanh_"],
+            jit_pass=torch._C._jit_pass_fuse_clamp_w_prepacked_linear_conv,
+        )
+
 # 287
 # 332
 # 351
