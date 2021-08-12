@@ -147,7 +147,6 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
         iH = 4
         iW = 5
         out_channels = 7
-        groups = 2
         kH = 8
         kW = 9
         weight = torch.rand(out_channels, in_channels, kH, kW)
@@ -185,7 +184,6 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
         iH = 4
         iW = 5
         out_channels = 7
-        groups = 2
         kH = 8
         kW = 9
         weight = torch.rand(out_channels, in_channels, kH, kW)
@@ -357,8 +355,176 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
             jit_pass=torch._C._jit_pass_fuse_clamp_w_prepacked_linear_conv,
         )
 
-# 287
-# 332
-# 351
-# 378
-# 389
+    #332
+    def test_fuse_relu_with_pack_ops_linear(self):
+        """
+        %packed_weight_bias = prepacked::linear_clamp_prepack(
+            %weight, %bias, %dummy_min_max, %dummy_min_max)
+        %linear_res = prepacked::linear_clamp_run(%input, %packed_weight_bias)
+        %res = aten::relu(%linear_res)
+
+        %output_min: float = prim::Constant[value=0.0]()
+        %output_max: None = prim::Constant()
+        %packed_weight_bias : __torch__.torch.classes.xnnpack.LinearOpContext = prepacked::linear_clamp_prepack(
+            %weight, %bias, %output_min, %output_max)
+        %res = prepacked::linear_clamp_run(%input, %packed_weight_bias)
+        """
+        class TestLinearWithRelu(torch.nn.Module):
+            def __init__(self, in_features, out_features):
+                super(TestLinearWithRelu, self).__init__()
+                self.in_features = in_features
+                self.out_features = out_features
+
+            def forward(self, x):
+                x = torch.nn.Linear(self.in_features, self.out_features)(x)
+                return torch.nn.functional.relu(x)
+
+        x_shape = (3, 2, 5)
+        model = torch.jit.trace(TestLinearWithRelu(5, 4), torch.rand(x_shape))
+        torch._C._jit_pass_insert_prepacked_ops(model._c)
+
+        self.check_replacement(
+            model=model,
+            x_shape=x_shape,
+            use_trace=True,
+            replacements={
+                "prepacked::linear_clamp_prepack": "prepacked::linear_clamp_prepack",
+                "prepacked::linear_clamp_run": "prepacked::linear_clamp_run",
+            },
+            other_removed=["aten::relu"],
+            jit_pass=torch._C._jit_pass_fuse_clamp_w_prepacked_linear_conv,
+        )
+
+    # 351
+    def test_fuse_relu_with_pack_ops_conv2d(self):
+        """
+        %packed_weight_bias = prepacked::conv2d_clamp_prepack(
+            %weight, %bias, %stride, %padding, %dilation, %groups,
+            %dummy_min_max, %dummy_min_max)
+        %conv2d_res = prepacked::conv2d_clamp_run(%input, %packed_weight_bias)
+        %res = aten::relu(%conv2d_res)
+
+        %output_min: float = prim::Constant[value=0.0]()
+        %output_max: None = prim::Constant()
+        %packed_weight_bias : __torch__.torch.classes.xnnpack.Conv2dOpContext = prepacked::conv2d_clamp_prepack(
+            %weight, %bias, %stride, %padding, %dilation, %groups,
+            %output_min, %output_max)
+        %res = prepacked::conv2d_clamp_run(%input, %packed_weight_bias)
+        """
+        class TestConv2dWithRelu(torch.nn.Module):
+            def __init__(self, in_channels, out_channels, kernel):
+                super(TestConv2dWithRelu, self).__init__()
+                self.in_channels = in_channels
+                self.out_channels = out_channels
+                self.kernel = kernel
+
+            def forward(self, x):
+                x = torch.nn.Conv2d(
+                    in_channels=self.in_channels,
+                    out_channels=self.out_channels,
+                    kernel_size=self.kernel,
+                )(x)
+                return torch.nn.functional.relu(x)
+
+        x_shape = (4, 5, 2, 2)
+        model = torch.jit.trace(TestConv2dWithRelu(5, 4, 2), torch.rand(x_shape))
+        torch._C._jit_pass_insert_prepacked_ops(model._c)
+
+        self.check_replacement(
+            model=model,
+            x_shape=x_shape,
+            use_trace=True,
+            replacements={
+                "prepacked::conv2d_clamp_prepack": "prepacked::conv2d_clamp_prepack",
+                "prepacked::conv2d_clamp_run": "aten::relu",
+            },
+            other_removed=[],
+            jit_pass=torch._C._jit_pass_fuse_clamp_w_prepacked_linear_conv,
+        )
+
+    # 378
+    def test_fuse_relu_with_pack_ops_linear_in_place(self):
+        """
+        %packed_weight_bias = prepacked::linear_clamp_prepack(
+            %weight, %bias, %dummy_min_max, %dummy_min_max)
+        %linear_res = prepacked::linear_clamp_run(%input, %packed_weight_bias)
+        %res = aten::relu_(%linear_res)
+
+        %output_min: float = prim::Constant[value=0.0]()
+        %output_max: None = prim::Constant()
+        %packed_weight_bias : __torch__.torch.classes.xnnpack.LinearOpContext = prepacked::linear_clamp_prepack(
+            %weight, %bias, %output_min, %output_max)
+        %res = prepacked::linear_clamp_run(%input, %packed_weight_bias)
+        """
+        class TestLinearWithReluInPlace(torch.nn.Module):
+            def __init__(self, in_features, out_features):
+                super(TestLinearWithReluInPlace, self).__init__()
+                self.in_features = in_features
+                self.out_features = out_features
+
+            def forward(self, x):
+                x = torch.nn.Linear(self.in_features, self.out_features)(x)
+                return torch.nn.functional.relu_(x)
+
+        x_shape = (3, 2, 5)
+        model = torch.jit.trace(TestLinearWithReluInPlace(5, 4), torch.rand(x_shape))
+        torch._C._jit_pass_insert_prepacked_ops(model._c)
+
+        self.check_replacement(
+            model=model,
+            x_shape=x_shape,
+            use_trace=True,
+            replacements={
+                "prepacked::linear_clamp_prepack": "prepacked::linear_clamp_prepack",
+                "prepacked::linear_clamp_run": "aten::relu_",
+            },
+            other_removed=[],
+            jit_pass=torch._C._jit_pass_fuse_clamp_w_prepacked_linear_conv,
+        )
+
+    #389
+    def test_fuse_relu_with_pack_ops_conv2d_in_place(self):
+        """
+        %packed_weight_bias = prepacked::conv2d_clamp_prepack(
+            %weight, %bias, %stride, %padding, %dilation, %groups,
+            %dummy_min_max, %dummy_min_max)
+        %conv2d_res = prepacked::conv2d_clamp_run(%input, %packed_weight_bias)
+        %res = aten::relu_(%conv2d_res)
+
+        %output_min: float = prim::Constant[value=0.0]()
+        %output_max: None = prim::Constant()
+        %packed_weight_bias : __torch__.torch.classes.xnnpack.Conv2dOpContext = prepacked::conv2d_clamp_prepack(
+            %weight, %bias, %stride, %padding, %dilation, %groups,
+            %output_min, %output_max)
+        %res = prepacked::conv2d_clamp_run(%input, %packed_weight_bias)
+        """
+        class TestConv2dWithReluInPlace(torch.nn.Module):
+            def __init__(self, in_channels, out_channels, kernel):
+                super(TestConv2dWithReluInPlace, self).__init__()
+                self.in_channels = in_channels
+                self.out_channels = out_channels
+                self.kernel = kernel
+
+            def forward(self, x):
+                x = torch.nn.Conv2d(
+                    in_channels=self.in_channels,
+                    out_channels=self.out_channels,
+                    kernel_size=self.kernel,
+                )(x)
+                return torch.nn.functional.relu_(x)
+
+        x_shape = (4, 5, 2, 2)
+        model = torch.jit.trace(TestConv2dWithReluInPlace(5, 4, 2), torch.rand(x_shape))
+        torch._C._jit_pass_insert_prepacked_ops(model._c)
+
+        self.check_replacement(
+            model=model,
+            x_shape=x_shape,
+            use_trace=True,
+            replacements={
+                "prepacked::conv2d_clamp_prepack": "prepacked::conv2d_clamp_prepack",
+                "prepacked::conv2d_clamp_run": "aten::relu_",
+            },
+            other_removed=[],
+            jit_pass=torch._C._jit_pass_fuse_clamp_w_prepacked_linear_conv,
+        )
