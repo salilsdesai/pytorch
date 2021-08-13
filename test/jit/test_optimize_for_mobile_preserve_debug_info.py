@@ -125,12 +125,12 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
         class TestConv2d(torch.nn.Module):
             def __init__(self, weight, bias):
                 super(TestConv2d, self).__init__()
-                self.weight = weight
-                self.bias = bias
+                self.weight = weight.float()
+                self.bias = bias.float()
 
             def forward(self, x):
                 return torch.nn.functional.conv2d(
-                    input=x,
+                    input=x.float(),
                     weight=self.weight,
                     bias=self.bias,
                 )
@@ -139,9 +139,9 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
         in_channels = 6
         iH = 4
         iW = 5
-        out_channels = 7
-        kH = 8
-        kW = 9
+        out_channels = 6
+        kH = 2
+        kW = 3
         weight = torch.rand(out_channels, in_channels, kH, kW)
         bias = torch.rand(out_channels)
 
@@ -176,8 +176,8 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
         iH = 4
         iW = 5
         out_channels = 6
-        kH = 8
-        kW = 9
+        kH = 2
+        kW = 3
         weight = torch.rand(out_channels, in_channels, kH, kW)
         bias = torch.rand(out_channels)
 
