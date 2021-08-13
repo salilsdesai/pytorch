@@ -156,17 +156,17 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
             jit_pass=torch._C._jit_pass_insert_prepacked_ops,
         )
 
-    # 198 TODO: Fix convolution failing
+    # 198
     def test_insert_prepacked_conv_transpose2d_op(self):
         class TestConvTranspose2d(torch.nn.Module):
             def __init__(self, weight, bias):
                 super(TestConvTranspose2d, self).__init__()
-                self.weight = weight
-                self.bias = bias
+                self.weight = weight.float()
+                self.bias = bias.float()
 
             def forward(self, x):
                 return torch.nn.functional.conv_transpose2d(
-                    input=x,
+                    input=x.float(),
                     weight=self.weight,
                     bias=self.bias,
                 )
@@ -175,7 +175,7 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
         in_channels = 6
         iH = 4
         iW = 5
-        out_channels = 7
+        out_channels = 6
         kH = 8
         kW = 9
         weight = torch.rand(out_channels, in_channels, kH, kW)
