@@ -77,20 +77,24 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
             jit_pass=torch._C._jit_pass_transform_conv1d_to_conv2d,
         )
 
-    # 137 TODO: Fix linear failing
+    # 137
     def test_insert_pre_packed_linear_op_before_inline(self):
         class TestLinearOpBeforeInline(torch.nn.Module):
             def __init__(self, weight, bias):
                 super(TestLinearOpBeforeInline, self).__init__()
-                self.weight = weight
-                self.bias = bias
+                self.weight = weight.float()
+                self.bias = bias.float()
 
             @staticmethod
             def linear(x, weight, bias):
                 return torch.nn.functional.linear(x, weight, bias)
 
             def forward(self, x):
-                return TestLinearOpBeforeInline.linear(x, self.weight, self.bias)
+                return TestLinearOpBeforeInline.linear(
+                    x.float(),
+                    self.weight,
+                    self.bias,
+                )
 
         self.check_replacement(
             model=TestLinearOpBeforeInline(torch.rand(4, 3), torch.rand(4)),
