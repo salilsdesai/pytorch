@@ -192,7 +192,8 @@ void insertPrePackedConv2dOp(std::shared_ptr<Graph>& graph) {
         %res = prepacked::conv2d_transpose_clamp_run(%input, %packed_weight_bias)
         return (%res) )";
 
-  value_mappings = {{"packed_weight_bias", "res"}, {"res", "res"}};
+  value_mappings = {
+      {"output_min_max", "res"}, {"packed_weight_bias", "res"}, {"res", "res"}};
 
   SubgraphRewriter transpose_rewriter;
   transpose_rewriter.RegisterRewritePattern(

@@ -52,7 +52,6 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
         # make sure it runs
         model(x)
 
-    # 66
     def test_replace_conv1d_with_conv2d(self):
         class TestConv1d(torch.nn.Module):
             def __init__(self, weight, bias):
@@ -77,7 +76,6 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
             jit_pass=torch._C._jit_pass_transform_conv1d_to_conv2d,
         )
 
-    # 137
     def test_insert_pre_packed_linear_op_before_inline(self):
         class TestLinearOpBeforeInline(torch.nn.Module):
             def __init__(self, weight, bias):
@@ -107,7 +105,6 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
             jit_pass=torch._C._jit_pass_insert_prepacked_ops,
         )
 
-    # 147
     def test_insert_pre_packed_linear_op(self):
         self.check_replacement(
             model=torch.nn.Linear(5, 4),
@@ -120,7 +117,6 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
             jit_pass=torch._C._jit_pass_insert_prepacked_ops,
         )
 
-    # 176 TODO: Fix convolution failing
     def test_insert_prepacked_conv2d_op(self):
         class TestConv2d(torch.nn.Module):
             def __init__(self, weight, bias):
@@ -156,7 +152,6 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
             jit_pass=torch._C._jit_pass_insert_prepacked_ops,
         )
 
-    # 198
     def test_insert_prepacked_conv_transpose2d_op(self):
         class TestConvTranspose2d(torch.nn.Module):
             def __init__(self, weight, bias):
@@ -192,7 +187,6 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
             jit_pass=torch._C._jit_pass_insert_prepacked_ops,
         )
 
-    # 235
     def test_fuse_hardtanh_with_pack_ops_linear(self):
         class TestLinearWithHardtanh(torch.nn.Module):
             def __init__(self, in_features, out_features):
@@ -219,7 +213,6 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
             jit_pass=torch._C._jit_pass_fuse_clamp_w_prepacked_linear_conv,
         )
 
-    # 253
     def test_fuse_hardtanh_with_pack_ops_conv2d(self):
         class TestConv2dWithHardtanh(torch.nn.Module):
             def __init__(self, in_channels, out_channels, kernel):
@@ -251,7 +244,6 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
             jit_pass=torch._C._jit_pass_fuse_clamp_w_prepacked_linear_conv,
         )
 
-    # 279
     def test_fuse_hardtanh_with_pack_ops_linear_in_place(self):
         class TestLinearWithHardtanhInPlace(torch.nn.Module):
             def __init__(self, in_features, out_features):
@@ -278,7 +270,6 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
             jit_pass=torch._C._jit_pass_fuse_clamp_w_prepacked_linear_conv,
         )
 
-    # 287
     def test_fuse_hardtanh_with_pack_ops_conv2d_in_place(self):
         class TestConv2dWithHardtanhInPlace(torch.nn.Module):
             def __init__(self, in_channels, out_channels, kernel):
@@ -310,7 +301,6 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
             jit_pass=torch._C._jit_pass_fuse_clamp_w_prepacked_linear_conv,
         )
 
-    # 332
     def test_fuse_relu_with_pack_ops_linear(self):
         class TestLinearWithRelu(torch.nn.Module):
             def __init__(self, in_features, out_features):
@@ -337,7 +327,6 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
             jit_pass=torch._C._jit_pass_fuse_clamp_w_prepacked_linear_conv,
         )
 
-    # 351
     def test_fuse_relu_with_pack_ops_conv2d(self):
         class TestConv2dWithRelu(torch.nn.Module):
             def __init__(self, in_channels, out_channels, kernel):
@@ -369,7 +358,6 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
             jit_pass=torch._C._jit_pass_fuse_clamp_w_prepacked_linear_conv,
         )
 
-    # 378
     def test_fuse_relu_with_pack_ops_linear_in_place(self):
         class TestLinearWithReluInPlace(torch.nn.Module):
             def __init__(self, in_features, out_features):
@@ -396,7 +384,6 @@ class TestOptimizeForMobilePreserveDebugInfo(JitTestCase):
             jit_pass=torch._C._jit_pass_fuse_clamp_w_prepacked_linear_conv,
         )
 
-    # 389
     def test_fuse_relu_with_pack_ops_conv2d_in_place(self):
         class TestConv2dWithReluInPlace(torch.nn.Module):
             def __init__(self, in_channels, out_channels, kernel):
