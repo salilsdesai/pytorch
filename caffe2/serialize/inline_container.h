@@ -96,8 +96,12 @@ namespace serialize {
 class TORCH_API PyTorchStreamReader final {
  public:
   explicit PyTorchStreamReader(const std::string& file_name);
+  explicit PyTorchStreamReader(const std::string& file_name, uint8_t* mmapping);
   explicit PyTorchStreamReader(std::istream* in);
   explicit PyTorchStreamReader(std::shared_ptr<ReadAdapterInterface> in);
+  explicit PyTorchStreamReader(
+    std::shared_ptr<ReadAdapterInterface> in,
+    uint8_t* mmapping);
 
   // return dataptr, size
   std::tuple<at::DataPtr, size_t> getRecord(const std::string& name);
@@ -124,6 +128,7 @@ class TORCH_API PyTorchStreamReader final {
   std::shared_ptr<ReadAdapterInterface> in_;
   int64_t version_;
   std::mutex reader_lock_;
+  uint8_t* mmapping_ = nullptr;
 };
 
 class TORCH_API PyTorchStreamWriter final {

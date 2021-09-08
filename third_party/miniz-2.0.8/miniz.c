@@ -25,6 +25,7 @@
  **************************************************************************/
 
 #include  "miniz.h"
+#include <stdio.h>
 
 typedef unsigned char mz_validate_uint16[sizeof(mz_uint16) == 2 ? 1 : -1];
 typedef unsigned char mz_validate_uint32[sizeof(mz_uint32) == 4 ? 1 : -1];
@@ -4453,8 +4454,11 @@ mz_bool mz_zip_reader_extract_to_mem_no_alloc(mz_zip_archive *pZip, mz_uint file
     if ((cur_file_ofs + file_stat.m_comp_size) > pZip->m_archive_size)
         return mz_zip_set_error(pZip, MZ_ZIP_INVALID_HEADER_OR_CORRUPTED);
 
+    printf("Extract (Index: %u, Size: %u, Flags: %u, Offest: %u) - (%d, %d): ", file_index, buf_size, flags, cur_file_ofs, (flags & MZ_ZIP_FLAG_COMPRESSED_DATA), (!file_stat.m_method));
+
     if ((flags & MZ_ZIP_FLAG_COMPRESSED_DATA) || (!file_stat.m_method))
     {
+        printf("In if\n");
         /* The file is stored or the caller has requested the compressed data. */
         if (pZip->m_pRead(pZip->m_pIO_opaque, cur_file_ofs, pBuf, (size_t)needed_size) != needed_size)
             return mz_zip_set_error(pZip, MZ_ZIP_FILE_READ_FAILED);
@@ -4469,6 +4473,8 @@ mz_bool mz_zip_reader_extract_to_mem_no_alloc(mz_zip_archive *pZip, mz_uint file
 
         return MZ_TRUE;
     }
+
+    printf("NOT In if\n");
 
     /* Decompress the file either directly from memory or from a file input buffer. */
     tinfl_init(&inflator);

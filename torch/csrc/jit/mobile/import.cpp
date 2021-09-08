@@ -17,6 +17,12 @@
 #include <string>
 #include <vector>
 
+// Includes for Mmap
+#include <fcntl.h> // O_RDONLY
+#include <sys/mman.h> // MAP_PRIVATE, PROT_READ, PROT_WRITE
+#include <sys/stat.h> // stat
+#include <unistd.h> // close
+
 // The import process to serialize the bytecode package.
 // An example for bytecode.pkl of a small mobile_module looks like:
 // (4,  # model version number (caffe2::serialize::kProducedBytecodeVersion)
@@ -82,6 +88,8 @@ namespace jit {
 using caffe2::serialize::IStreamAdapter;
 using caffe2::serialize::PyTorchStreamReader;
 using caffe2::serialize::ReadAdapterInterface;
+
+static uint8_t* mmapping = nullptr;
 
 OpCode parseOpCode(const char* str);
 
@@ -600,11 +608,23 @@ mobile::Module _load_for_mobile(
   return module;
 }
 
+void setup_mmap(const std::string& filename) {
+  int fd = open(filename.c_str(), O_RDONLY);
+  struct stat st;
+  fstat(fd, &st);
+  size_t size = st.st_size;
+  mmapping =
+    (uint8_t*) mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+  close(fd);
+  printf("Mmapping set: %p\n", mmapping);
+}
+
 mobile::Module _load_for_mobile(
     const std::string& filename,
     c10::optional<at::Device> device,
     ExtraFilesMap& extra_files) {
   std::unique_ptr<FileAdapter> rai = std::make_unique<FileAdapter>(filename);
+  setup_mmap(filename);
   auto module = _load_for_mobile(std::move(rai), device, extra_files);
   return module;
 }
@@ -615,6 +635,7 @@ mobile::Module _load_for_mobile(
     ExtraFilesMap& extra_files,
     uint64_t module_load_options) {
   std::unique_ptr<FileAdapter> rai = std::make_unique<FileAdapter>(filename);
+  setup_mmap(filename);
   auto module = _load_for_mobile_impl(
       std::move(rai), device, extra_files, module_load_options);
   return module;
@@ -649,7 +670,7 @@ mobile::Module _load_for_mobile_impl(
   }
 
   const size_t model_size = rai != nullptr ? rai->size() : 0;
-  auto reader = torch::make_unique<PyTorchStreamReader>(std::move(rai));
+  auto reader = torch::make_unique<PyTorchStreamReader>(std::move(rai), mmapping);
   BytecodeDeserializer deserializer(std::move(reader), module_load_options);
 
   std::string error_message;
@@ -697,7 +718,7 @@ void _load_extra_only_for_mobile(
   if (observer) {
     observer->onEnterLoadModel(instance_key);
   }
-  auto reader = torch::make_unique<PyTorchStreamReader>(std::move(rai));
+  auto reader = torch::make_unique<PyTorchStreamReader>(std::move(rai), mmapping);
   BytecodeDeserializer deserializer(std::move(reader));
   deserializer.deserialize_only_extra(device, extra_files);
 }

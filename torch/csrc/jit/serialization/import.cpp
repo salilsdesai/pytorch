@@ -29,6 +29,14 @@
 #include <unordered_map>
 #include <vector>
 
+// Includes for Mmap
+#include <fcntl.h> // O_RDONLY
+#include <sys/mman.h> // MAP_PRIVATE, PROT_READ, PROT_WRITE
+#include <sys/stat.h> // stat
+#include <unistd.h> // close
+
+#include <iostream>
+
 namespace torch {
 namespace jit {
 
@@ -36,6 +44,8 @@ using caffe2::serialize::FileAdapter;
 using caffe2::serialize::IStreamAdapter;
 using caffe2::serialize::PyTorchStreamReader;
 using caffe2::serialize::ReadAdapterInterface;
+
+static uint8_t* mmapping2 = nullptr;
 
 void postSetStateValidate(const IValue& v) {
   auto obj = v.toObject();
@@ -59,6 +69,20 @@ void postSetStateValidate(const IValue& v) {
               attrType->repr_str()));
     }
   }
+}
+
+uint8_t* setup_mmap2(const std::string& filename) {
+  if (mmapping2 == nullptr) {
+    int fd = open(filename.c_str(), O_RDONLY);
+    struct stat st;
+    fstat(fd, &st);
+    size_t size = st.st_size;
+    mmapping2 =
+      (uint8_t*) mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+    close(fd);
+    printf("mmapping2 set: %p\n", mmapping2);
+  }
+  return mmapping2;
 }
 
 namespace {
@@ -318,7 +342,8 @@ Module import_ir_module(
     const std::string& filename,
     c10::optional<at::Device> device,
     ExtraFilesMap& extra_files) {
-  auto reader = torch::make_unique<PyTorchStreamReader>(filename);
+  auto reader = torch::make_unique<PyTorchStreamReader>(filename, setup_mmap2(filename));
+  printf("Reader Initialized with Mmap\n");
   ScriptModuleDeserializer deserializer(std::move(cu), std::move(reader));
   return deserializer.deserialize(device, extra_files);
 }

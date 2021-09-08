@@ -1,6 +1,8 @@
 #include <caffe2/serialize/inline_container.h>
 #include <torch/csrc/jit/serialization/import_read.h>
 
+#include <iostream>
+
 namespace torch {
 namespace jit {
 
@@ -37,6 +39,7 @@ IValue readArchiveAndTensors(
 
   auto read_record = [&](const std::string& name) {
     std::string ss = tensor_dir_path + name;
+    std::cout << "Reading Record (" << ss << "): ";
     return std::get<0>(stream_reader.getRecord(ss));
   };
 

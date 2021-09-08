@@ -5,6 +5,7 @@
 #include <ostream>
 #include <fstream>
 #include <algorithm>
+#include <iostream>
 
 #include <c10/core/Allocator.h>
 #include <c10/core/CPUAllocator.h>
@@ -61,6 +62,14 @@ PyTorchStreamReader::PyTorchStreamReader(const std::string& file_name)
 }
 
 // NOLINTNEXTLINE(cppcoreguidelines-pro-type-member-init)
+PyTorchStreamReader::PyTorchStreamReader(const std::string& file_name, uint8_t* mmapping)
+    : ar_(std::make_unique<mz_zip_archive>()),
+      in_(std::make_unique<FileAdapter>(file_name)),
+      mmapping_(mmapping) {
+  init();
+}
+
+// NOLINTNEXTLINE(cppcoreguidelines-pro-type-member-init)
 PyTorchStreamReader::PyTorchStreamReader(std::istream* in)
     : ar_(std::make_unique<mz_zip_archive>()),
       in_(std::make_unique<IStreamAdapter>(in)) {
@@ -71,6 +80,14 @@ PyTorchStreamReader::PyTorchStreamReader(std::istream* in)
 PyTorchStreamReader::PyTorchStreamReader(
     std::shared_ptr<ReadAdapterInterface> in)
     : ar_(std::make_unique<mz_zip_archive>()), in_(std::move(in)) {
+  init();
+}
+
+// NOLINTNEXTLINE(cppcoreguidelines-pro-type-member-init)
+PyTorchStreamReader::PyTorchStreamReader(
+    std::shared_ptr<ReadAdapterInterface> in, uint8_t* mmapping)
+    : ar_(std::make_unique<mz_zip_archive>()), in_(std::move(in)),
+      mmapping_(mmapping) {
   init();
 }
 
@@ -250,15 +267,32 @@ size_t PyTorchStreamReader::getRecordID(const std::string& name) {
 
 // return dataptr, size
 std::tuple<at::DataPtr, size_t> PyTorchStreamReader::getRecord(const std::string& name) {
+  printf("In Get Record!\n");
   std::lock_guard<std::mutex> guard(reader_lock_);
   size_t key = getRecordID(name);
   mz_zip_archive_file_stat stat;
   mz_zip_reader_file_stat(ar_.get(), key, &stat);
   valid("retrieving file meta-data for ", name.c_str());
-  at::DataPtr retval = c10::GetCPUAllocator()->allocate(stat.m_uncomp_size);
-  mz_zip_reader_extract_to_mem(ar_.get(), key, retval.get(), stat.m_uncomp_size, 0);
-  valid("reading file ", name.c_str());
 
+  at::DataPtr retval;
+  if (mmapping_ != nullptr && !stat.m_method) {
+    printf(" [Reading with MMap] ");
+    // Data is uncompressed and can be read with mmap
+    mz_uint64 cur_file_ofs = stat.m_local_header_ofs;
+    mz_uint8* pLocal_header = mmapping_ + cur_file_ofs;
+    cur_file_ofs +=
+      MZ_ZIP_LOCAL_DIR_HEADER_SIZE +
+      MZ_READ_LE16(pLocal_header + MZ_ZIP_LDH_FILENAME_LEN_OFS) +
+      MZ_READ_LE16(pLocal_header + MZ_ZIP_LDH_EXTRA_LEN_OFS);
+    printf(" {moving offsets done (%llu)} ", cur_file_ofs);
+    retval = DataPtr((void*) (mmapping_ + cur_file_ofs), DeviceType::CPU);
+  } else {
+    printf(" [Reading Without MMap] (Reasons: %s, %s) ", (mmapping_ != nullptr ? "true" : "false"), (!stat.m_method ? "true" : "false"));
+    retval = c10::GetCPUAllocator()->allocate(stat.m_uncomp_size);
+    mz_zip_reader_extract_to_mem(ar_.get(), key, retval.get(), stat.m_uncomp_size, 0);
+  }
+
+  valid("reading file ", name.c_str());
   return std::make_tuple(std::move(retval), stat.m_uncomp_size);
 }
 
