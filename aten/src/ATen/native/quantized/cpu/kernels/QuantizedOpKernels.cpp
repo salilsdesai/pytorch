@@ -2779,6 +2779,134 @@ void quantize_tensor_arm<c10::quint8>(
 #endif
 }
 
+int8_t get_underlying_val_signed(c10::qint8 qval) {
+  return qval.val_;
+}
+
+uint8_t get_underlying_val_unsigned(c10::quint8 qval) {
+  return qval.val_;
+}
+
+// Generic template defaults to naive dequantize implementation
+template <typename T>
+void dequantize_tensor_arm(
+    const T* in,
+    Tensor& rtensor,
+    const int64_t N,
+    const float scale,
+    const int32_t zero_point) {
+  float* out = rtensor.data_ptr<float>();
+  for (int i = 0; i < N; ++i) {
+    out[i] = dequantize_val<T>(scale, zero_point, in[i]);
+  }
+}
+
+template <>
+void dequantize_tensor_arm<c10::qint8>(
+    const c10::qint8* in,
+    Tensor& rtensor,
+    const int64_t N,
+    const float scale,
+    const int32_t zero_point) {
+  float* out = rtensor.data_ptr<float>();
+
+  TORCH_INTERNAL_ASSERT(
+    zero_point <= INT8_MAX && zero_point >= INT8_MIN,
+    "Zero point out of int8_t range");
+
+  const int8x16_t zero_point_8 = vdupq_n_s8((int8_t) zero_point);
+  const float32x4_t scale_32 = vdupq_n_s32(scale);
+
+  int i;
+  for (i = 0; i + 16 < N; i += 16) {
+    int8_t next_vals[16];
+    std::transform(in, in + 16, next_vals, get_underlying_val_signed);
+    in += 16;
+
+    const int8x16_t vin_0_to_15 = vld1q_s8(next_vals);
+    const int8x16_t minus_zero = vsubq_s8(vin_0_to_15, zero_point_8);
+
+    const int16x8_t minus_zero_high = vmovl_s8(vget_high_s8(minus_zero)); // 0, 1, 2, 3, 4, 5, 6, 7
+    const int16x8_t minus_zero_low = vmovl_s8(vget_low_s8(minus_zero)); // 8, 9, 10, 11, 12, 13, 14, 15
+
+    const int32x4_t minus_zero_group_0 = vmovl_s16(vget_high_s16(minus_zero_high)); // 0, 1, 2, 3
+    const int32x4_t minus_zero_group_1 = vmovl_s16(vget_low_s16(minus_zero_high)); // 4, 5, 6, 7
+    const int32x4_t minus_zero_group_2 = vmovl_s16(vget_high_s16(minus_zero_low)); // 8, 9, 10, 11
+    const int32x4_t minus_zero_group_3 = vmovl_s16(vget_low_s16(minus_zero_low)); // 12, 13, 14, 15
+
+    const float32x4_t out_group_0 = vmulq_f32(vcvtq_f32_s32(minus_zero_group_0), scale_32); // 0, 1, 2, 3
+    const float32x4_t out_group_1 = vmulq_f32(vcvtq_f32_s32(minus_zero_group_1), scale_32); // 4, 5, 6, 7
+    const float32x4_t out_group_2 = vmulq_f32(vcvtq_f32_s32(minus_zero_group_2), scale_32); // 8, 9, 10, 11
+    const float32x4_t out_group_3 = vmulq_f32(vcvtq_f32_s32(minus_zero_group_3), scale_32); // 12, 13, 14, 15
+
+    vst1q_f32(out, out_group_0);
+    out += 4;
+    vst1q_f32(out, out_group_1);
+    out += 4;
+    vst1q_f32(out, out_group_2);
+    out += 4;
+    vst1q_f32(out, out_group_3);
+    out += 4;
+  }
+
+  for (; i < N; ++i) {
+    (*out++) = dequantize_val<c10::qint8>(scale, zero_point, (*in++));
+  }
+}
+
+template <>
+void dequantize_tensor_arm<c10::quint8>(
+    const c10::quint8* in,
+    Tensor& rtensor,
+    const int64_t N,
+    const float scale,
+    const int32_t zero_point) {
+  float* out = rtensor.data_ptr<float>();
+
+  TORCH_INTERNAL_ASSERT(
+    zero_point <= UINT8_MAX && zero_point >= 0,
+    "Zero point out of uint8_t range");
+
+  const uint8x16_t zero_point_8 = vdupq_n_u8((uint8_t) zero_point);
+  const float32x4_t scale_32 = vdupq_n_s32(scale);
+
+  int i;
+  for (i = 0; i + 16 < N; i += 16) {
+    uint8_t next_vals[16];
+    std::transform(in, in + 16, next_vals, get_underlying_val_unsigned);
+    in += 16;
+
+    const uint8x16_t vin_0_to_15 = vld1q_u8(next_vals);
+    const uint8x16_t minus_zero = vsubq_u8(vin_0_to_15, zero_point_8);
+
+    const uint16x8_t minus_zero_high = vmovl_u8(vget_high_u8(minus_zero)); // 0, 1, 2, 3, 4, 5, 6, 7
+    const uint16x8_t minus_zero_low = vmovl_u8(vget_low_u8(minus_zero)); // 8, 9, 10, 11, 12, 13, 14, 15
+
+    const uint32x4_t minus_zero_group_0 = vmovl_u16(vget_high_u16(minus_zero_high)); // 0, 1, 2, 3
+    const uint32x4_t minus_zero_group_1 = vmovl_u16(vget_low_u16(minus_zero_high)); // 4, 5, 6, 7
+    const uint32x4_t minus_zero_group_2 = vmovl_u16(vget_high_u16(minus_zero_low)); // 8, 9, 10, 11
+    const uint32x4_t minus_zero_group_3 = vmovl_u16(vget_low_u16(minus_zero_low)); // 12, 13, 14, 15
+
+    const float32x4_t out_group_0 = vmulq_f32(vcvtq_f32_u32(minus_zero_group_0), scale_32); // 0, 1, 2, 3
+    const float32x4_t out_group_1 = vmulq_f32(vcvtq_f32_u32(minus_zero_group_1), scale_32); // 4, 5, 6, 7
+    const float32x4_t out_group_2 = vmulq_f32(vcvtq_f32_u32(minus_zero_group_2), scale_32); // 8, 9, 10, 11
+    const float32x4_t out_group_3 = vmulq_f32(vcvtq_f32_u32(minus_zero_group_3), scale_32); // 12, 13, 14, 15
+
+    vst1q_f32(out, out_group_0);
+    out += 4;
+    vst1q_f32(out, out_group_1);
+    out += 4;
+    vst1q_f32(out, out_group_2);
+    out += 4;
+    vst1q_f32(out, out_group_3);
+    out += 4;
+  }
+
+  for (; i < N; ++i) {
+    (*out++) = dequantize_val<c10::quint8>(scale, zero_point, (*in++));
+  }
+}
+
 #endif // defined(__ARM_NEON__) || defined(__aarch64__)
 
 void quantize_tensor_per_tensor_affine_cpu(
@@ -2814,6 +2942,15 @@ void dequantize_tensor_per_tensor_affine_cpu(
     Tensor& rtensor,
     double scale,
     int64_t zero_point) {
+#if defined(__ARM_NEON__) || defined(__aarch64__)
+  AT_DISPATCH_QINT_TYPES(
+      qtensor.scalar_type(), "dequantize_tensor_per_tensor_affine_cpu", [&]() {
+        check_tensor_memory_format(qtensor, rtensor);
+        const scalar_t* qdata = qtensor.data_ptr<scalar_t>();
+        dequantize_tensor_arm<scalar_t>(
+            qdata, rtensor, qtensor.numel(), scale, zero_point);
+      });
+#else
   AT_DISPATCH_QINT_TYPES(
       qtensor.scalar_type(), "dequantize_tensor_per_tensor_affine_cpu", [&]() {
       check_tensor_memory_format(qtensor, rtensor);
@@ -2824,6 +2961,7 @@ void dequantize_tensor_per_tensor_affine_cpu(
           rd[i] = dequantize_val<scalar_t>(scale, zero_point, qd[i]);
         }
       });
+#endif // defined(__ARM_NEON__) || defined(__aarch64__)
 }
 #endif // USE_FBGEMM
 
