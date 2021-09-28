@@ -9,6 +9,7 @@
 #include <ATen/native/quantized/fake_quant_affine.h>
 #include <ATen/native/quantized/cpu/quantized_ops.h>
 #include <c10/util/irange.h>
+#include <iostream>
 
 #include <cmath>
 #ifdef USE_FBGEMM
@@ -2796,6 +2797,7 @@ void dequantize_tensor_arm(
     const float scale,
     const int32_t zero_point) {
   float* out = rtensor.data_ptr<float>();
+  std::cout << "- - - - In Dequantize Tensor Arm GENERIC (N: " << N << ")" << std::endl;
   for (int i = 0; i < N; ++i) {
     out[i] = dequantize_val<T>(scale, zero_point, in[i]);
   }
@@ -2808,14 +2810,39 @@ void dequantize_tensor_arm<c10::qint8>(
     const int64_t N,
     const float scale,
     const int32_t zero_point) {
+  std::cout << "- - - - In Dequantize Tensor Arm QINT8 (N: " << N << ", Scale: " << scale << ", Zero Point: " << zero_point << ")" << std::endl;
   float* out = rtensor.data_ptr<float>();
 
   TORCH_INTERNAL_ASSERT(
     zero_point <= INT8_MAX && zero_point >= INT8_MIN,
     "Zero point out of int8_t range");
 
+  std::cout << "----------------------\nFULL DEBUG\n----------------------\n";
+
+
+  int j;
+
+
   const int8x16_t zero_point_8 = vdupq_n_s8((int8_t) zero_point);
-  const float32x4_t scale_32 = vdupq_n_s32(scale);
+
+        int8_t zero_point_8_vals[16];
+        vst1q_s8(zero_point_8_vals, zero_point_8);
+        std::cout << "zero_point_8: ";
+        for (j = 0; j < 16; j++) {
+          std::cout << ((int)zero_point_8_vals[j]) << ", ";
+        }
+        std::cout << std::endl;
+
+  const float32x4_t scale_32 = vdupq_n_f32(scale);
+
+        float scale_32_vals[4];
+        vst1q_f32(scale_32_vals, scale_32);
+        std::cout << "scale_32_vals: ";
+        for (j = 0; j < 4; j++) {
+          std::cout << scale_32_vals[j] << ", ";
+        }
+        std::cout << std::endl;
+
 
   int i;
   for (i = 0; i + 16 < N; i += 16) {
@@ -2823,21 +2850,82 @@ void dequantize_tensor_arm<c10::qint8>(
     std::transform(in, in + 16, next_vals, get_underlying_val_signed);
     in += 16;
 
+          std::cout << "Next Vals: ";
+          for (j = 0; j < 16; j++) {
+            std::cout << next_vals[j] << ", ";
+          }
+          std::cout << std::endl;
+
     const int8x16_t vin_0_to_15 = vld1q_s8(next_vals);
+
+          int8_t vin_0_to_15_vals[16];
+          vst1q_s8(vin_0_to_15_vals, vin_0_to_15);
+          std::cout << "vin_0_to_15: ";
+          for (j = 0; j < 16; j++) {
+            std::cout << ((int)vin_0_to_15_vals[j]) << ", ";
+          }
+          std::cout << std::endl;
+
     const int8x16_t minus_zero = vsubq_s8(vin_0_to_15, zero_point_8);
+
+          int8_t minus_zero_vals[16];
+          vst1q_s8(minus_zero_vals, minus_zero);
+          std::cout << "minus_zero: ";
+          for (j = 0; j < 16; j++) {
+            std::cout << ((int)minus_zero_vals[j]) << ", ";
+          }
+          std::cout << std::endl;
 
     const int16x8_t minus_zero_high = vmovl_s8(vget_high_s8(minus_zero)); // 0, 1, 2, 3, 4, 5, 6, 7
     const int16x8_t minus_zero_low = vmovl_s8(vget_low_s8(minus_zero)); // 8, 9, 10, 11, 12, 13, 14, 15
+
+          int16_t minus_zero_high_vals[8];
+          vst1q_s16(minus_zero_high_vals, minus_zero_high);
+          std::cout << "minus_zero_high: ";
+          for (j = 0; j < 8; j++) {
+            std::cout << minus_zero_high_vals[j] << ", ";
+          }
+          std::cout << std::endl;
+
+          int16_t minus_zero_low_vals[8];
+          vst1q_s16(minus_zero_low_vals, minus_zero_low);
+          std::cout << "minus_zero_low: ";
+          for (j = 0; j < 8; j++) {
+            std::cout << minus_zero_low_vals[j] << ", ";
+          }
+          std::cout << std::endl;
 
     const int32x4_t minus_zero_group_0 = vmovl_s16(vget_high_s16(minus_zero_high)); // 0, 1, 2, 3
     const int32x4_t minus_zero_group_1 = vmovl_s16(vget_low_s16(minus_zero_high)); // 4, 5, 6, 7
     const int32x4_t minus_zero_group_2 = vmovl_s16(vget_high_s16(minus_zero_low)); // 8, 9, 10, 11
     const int32x4_t minus_zero_group_3 = vmovl_s16(vget_low_s16(minus_zero_low)); // 12, 13, 14, 15
 
+          int32_t minus_zero_group_vals[16];
+          vst1q_s32(minus_zero_group_vals, minus_zero_group_0);
+          vst1q_s32(minus_zero_group_vals + 4, minus_zero_group_1);
+          vst1q_s32(minus_zero_group_vals + 8, minus_zero_group_2);
+          vst1q_s32(minus_zero_group_vals + 12, minus_zero_group_3);
+          std::cout << "minus_zero_groups: ";
+          for (j = 0; j < 16; j++) {
+            std::cout << minus_zero_group_vals[j] << ", ";
+          }
+          std::cout << std::endl;
+
     const float32x4_t out_group_0 = vmulq_f32(vcvtq_f32_s32(minus_zero_group_0), scale_32); // 0, 1, 2, 3
     const float32x4_t out_group_1 = vmulq_f32(vcvtq_f32_s32(minus_zero_group_1), scale_32); // 4, 5, 6, 7
     const float32x4_t out_group_2 = vmulq_f32(vcvtq_f32_s32(minus_zero_group_2), scale_32); // 8, 9, 10, 11
     const float32x4_t out_group_3 = vmulq_f32(vcvtq_f32_s32(minus_zero_group_3), scale_32); // 12, 13, 14, 15
+
+          float out_group_vals[16];
+          vst1q_f32(out_group_vals, out_group_0);
+          vst1q_f32(out_group_vals + 4, out_group_1);
+          vst1q_f32(out_group_vals + 8, out_group_2);
+          vst1q_f32(out_group_vals + 12, out_group_3);
+          std::cout << "out_groups: ";
+          for (j = 0; j < 16; j++) {
+            std::cout << out_group_vals[j] << ", ";
+          }
+          std::cout << std::endl;
 
     vst1q_f32(out, out_group_0);
     out += 4;
@@ -2861,14 +2949,36 @@ void dequantize_tensor_arm<c10::quint8>(
     const int64_t N,
     const float scale,
     const int32_t zero_point) {
+  std::cout << "- - - - In Dequantize Tensor Arm QUINT8 (N: " << N << ")" << std::endl;
   float* out = rtensor.data_ptr<float>();
 
   TORCH_INTERNAL_ASSERT(
     zero_point <= UINT8_MAX && zero_point >= 0,
     "Zero point out of uint8_t range");
 
+  std::cout << "----------------------\nFULL DEBUG\n----------------------\n";
+
+  int j;
+
   const uint8x16_t zero_point_8 = vdupq_n_u8((uint8_t) zero_point);
-  const float32x4_t scale_32 = vdupq_n_s32(scale);
+
+          uint8_t zero_point_8_vals[16];
+          vst1q_u8(zero_point_8_vals, zero_point_8);
+          std::cout << "zero_point_8: ";
+          for (j = 0; j < 16; j++) {
+            std::cout << ((int)zero_point_8_vals[j]) << ", ";
+          }
+          std::cout << std::endl;
+
+  const float32x4_t scale_32 = vdupq_n_f32(scale);
+
+          float scale_32_vals[4];
+          vst1q_f32(scale_32_vals, scale_32);
+          std::cout << "scale_32_vals: ";
+          for (j = 0; j < 4; j++) {
+            std::cout << scale_32_vals[j] << ", ";
+          }
+          std::cout << std::endl;
 
   int i;
   for (i = 0; i + 16 < N; i += 16) {
@@ -2876,21 +2986,82 @@ void dequantize_tensor_arm<c10::quint8>(
     std::transform(in, in + 16, next_vals, get_underlying_val_unsigned);
     in += 16;
 
+          std::cout << "Next Vals: ";
+          for (j = 0; j < 16; j++) {
+            std::cout << next_vals[j] << ", ";
+          }
+          std::cout << std::endl;
+
     const uint8x16_t vin_0_to_15 = vld1q_u8(next_vals);
+
+          uint8_t vin_0_to_15_vals[16];
+          vst1q_u8(vin_0_to_15_vals, vin_0_to_15);
+          std::cout << "vin_0_to_15: ";
+          for (j = 0; j < 16; j++) {
+            std::cout << ((int)vin_0_to_15_vals[j]) << ", ";
+          }
+          std::cout << std::endl;
+
     const uint8x16_t minus_zero = vsubq_u8(vin_0_to_15, zero_point_8);
+
+          uint8_t minus_zero_vals[16];
+          vst1q_u8(minus_zero_vals, minus_zero);
+          std::cout << "minus_zero: ";
+          for (j = 0; j < 16; j++) {
+            std::cout << ((int)minus_zero_vals[j]) << ", ";
+          }
+          std::cout << std::endl;
 
     const uint16x8_t minus_zero_high = vmovl_u8(vget_high_u8(minus_zero)); // 0, 1, 2, 3, 4, 5, 6, 7
     const uint16x8_t minus_zero_low = vmovl_u8(vget_low_u8(minus_zero)); // 8, 9, 10, 11, 12, 13, 14, 15
+
+          uint16_t minus_zero_high_vals[8];
+          vst1q_u16(minus_zero_high_vals, minus_zero_high);
+          std::cout << "minus_zero_high: ";
+          for (j = 0; j < 8; j++) {
+            std::cout << minus_zero_high_vals[j] << ", ";
+          }
+          std::cout << std::endl;
+
+          uint16_t minus_zero_low_vals[8];
+          vst1q_u16(minus_zero_low_vals, minus_zero_low);
+          std::cout << "minus_zero_low: ";
+          for (j = 0; j < 8; j++) {
+            std::cout << minus_zero_low_vals[j] << ", ";
+          }
+          std::cout << std::endl;
 
     const uint32x4_t minus_zero_group_0 = vmovl_u16(vget_high_u16(minus_zero_high)); // 0, 1, 2, 3
     const uint32x4_t minus_zero_group_1 = vmovl_u16(vget_low_u16(minus_zero_high)); // 4, 5, 6, 7
     const uint32x4_t minus_zero_group_2 = vmovl_u16(vget_high_u16(minus_zero_low)); // 8, 9, 10, 11
     const uint32x4_t minus_zero_group_3 = vmovl_u16(vget_low_u16(minus_zero_low)); // 12, 13, 14, 15
 
+          uint32_t minus_zero_group_vals[16];
+          vst1q_u32(minus_zero_group_vals, minus_zero_group_0);
+          vst1q_u32(minus_zero_group_vals + 4, minus_zero_group_1);
+          vst1q_u32(minus_zero_group_vals + 8, minus_zero_group_2);
+          vst1q_u32(minus_zero_group_vals + 12, minus_zero_group_3);
+          std::cout << "minus_zero_groups: ";
+          for (j = 0; j < 16; j++) {
+            std::cout << minus_zero_group_vals[j] << ", ";
+          }
+          std::cout << std::endl;
+
     const float32x4_t out_group_0 = vmulq_f32(vcvtq_f32_u32(minus_zero_group_0), scale_32); // 0, 1, 2, 3
     const float32x4_t out_group_1 = vmulq_f32(vcvtq_f32_u32(minus_zero_group_1), scale_32); // 4, 5, 6, 7
     const float32x4_t out_group_2 = vmulq_f32(vcvtq_f32_u32(minus_zero_group_2), scale_32); // 8, 9, 10, 11
     const float32x4_t out_group_3 = vmulq_f32(vcvtq_f32_u32(minus_zero_group_3), scale_32); // 12, 13, 14, 15
+
+          float out_group_vals[16];
+          vst1q_f32(out_group_vals, out_group_0);
+          vst1q_f32(out_group_vals + 4, out_group_1);
+          vst1q_f32(out_group_vals + 8, out_group_2);
+          vst1q_f32(out_group_vals + 12, out_group_3);
+          std::cout << "out_groups: ";
+          for (j = 0; j < 16; j++) {
+            std::cout << out_group_vals[j] << ", ";
+          }
+          std::cout << std::endl;
 
     vst1q_f32(out, out_group_0);
     out += 4;
@@ -2942,7 +3113,10 @@ void dequantize_tensor_per_tensor_affine_cpu(
     Tensor& rtensor,
     double scale,
     int64_t zero_point) {
+  std::cout << "- In MAIN Quantize Tensor Per Tensor Affine CPU" << std::endl;
+  std::cout << "- - Numel: " << rtensor.numel() << ", Scale: " << scale << ", Zero Point: " << zero_point << std::endl;
 #if defined(__ARM_NEON__) || defined(__aarch64__)
+  std::cout << "- - - In ARM_NEON or AARCH64" << std::endl;
   AT_DISPATCH_QINT_TYPES(
       qtensor.scalar_type(), "dequantize_tensor_per_tensor_affine_cpu", [&]() {
         check_tensor_memory_format(qtensor, rtensor);
@@ -2951,6 +3125,7 @@ void dequantize_tensor_per_tensor_affine_cpu(
             qdata, rtensor, qtensor.numel(), scale, zero_point);
       });
 #else
+  std::cout << "- - - NOT In ARM_NEON or AARCH64" << std::endl;
   AT_DISPATCH_QINT_TYPES(
       qtensor.scalar_type(), "dequantize_tensor_per_tensor_affine_cpu", [&]() {
       check_tensor_memory_format(qtensor, rtensor);
