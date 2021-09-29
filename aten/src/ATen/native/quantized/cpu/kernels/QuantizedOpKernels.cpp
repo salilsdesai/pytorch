@@ -9,7 +9,6 @@
 #include <ATen/native/quantized/fake_quant_affine.h>
 #include <ATen/native/quantized/cpu/quantized_ops.h>
 #include <c10/util/irange.h>
-#include <iostream>
 
 #include <cmath>
 #ifdef USE_FBGEMM
