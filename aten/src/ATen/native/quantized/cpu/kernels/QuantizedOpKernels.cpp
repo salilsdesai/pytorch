@@ -2821,23 +2821,7 @@ void dequantize_tensor_arm<c10::qint8>(
 
   int i;
   for (i = 0; i + 16 < N; i += 16) {
-    int j;
-    int8_t next_vals[16];
-    for (j = 0; j < 16; j++) {
-      next_vals[j] = in[j].val_;
-    }
-
-    std::cout << "Current Pairs: ";
-    for (j = 0; j < 16; j++) {
-      std::cout << "(" << ((int32_t)next_vals[j]) << ", " << ((int32_t)in_underlying[j]) << ") ";
-    }
-    std::cout << std::endl;
-
     const int8x16_t vin_s8 = vld1q_s8(in_underlying);
-
-    in += 16;
-    in_underlying += 16;
-
     const int16x8_t vin_low_s16 = vmovl_s8(vget_low_s8(vin_s8)); // 0 through 7
     const int16x8_t vin_high_s16 = VMOVL_HIGH_S8(vin_s8); // 8 through 15
     const int32x4_t vin_s32x4[] = {
@@ -2847,6 +2831,7 @@ void dequantize_tensor_arm<c10::qint8>(
       VMOVL_HIGH_S16(vin_high_s16) // 12, 13, 14, 15
     };
 
+    int j;
     for (j = 0; j < 4; j++) {
       vst1q_f32( // Store at out pointer
         out,
@@ -2862,6 +2847,8 @@ void dequantize_tensor_arm<c10::qint8>(
       );
       out += 4;
     }
+    in += 16;
+    in_underlying += 16;
   }
 
   for (; i < N; ++i) { // use default dequantize for remaining vals
@@ -2885,23 +2872,7 @@ void dequantize_tensor_arm<c10::quint8>(
 
   int i;
   for (i = 0; i + 16 < N; i += 16) {
-    int j;
-    uint8_t next_vals[16];
-    for (j = 0; j < 16; j++) {
-      next_vals[j] = in[j].val_;
-    }
-
-    std::cout << "Current Pairs: ";
-    for (j = 0; j < 16; j++) {
-      std::cout << "(" << ((uint32_t)next_vals[j]) << ", " << ((uint32_t)in_underlying[j]) << ") ";
-    }
-    std::cout << std::endl;
-
     const uint8x16_t vin_u8 = vld1q_u8(in_underlying);
-
-    in += 16;
-    in_underlying += 16;
-
     const uint16x8_t vin_low_u16 = vmovl_u8(vget_low_u8(vin_u8)); // 0 through 7
     const uint16x8_t vin_high_u16 = VMOVL_HIGH_U8(vin_u8); // 8 through 15
     const uint32x4_t vin_u32x4[] = {
@@ -2911,6 +2882,7 @@ void dequantize_tensor_arm<c10::quint8>(
       VMOVL_HIGH_U16(vin_high_u16) // 12, 13, 14, 15
     };
 
+    int j;
     for (j = 0; j < 4; j++) {
       vst1q_f32( // Store at out pointer
         out,
@@ -2926,6 +2898,8 @@ void dequantize_tensor_arm<c10::quint8>(
       );
       out += 4;
     }
+    in += 16;
+    in_underlying += 16;
   }
 
   for (; i < N; ++i) { // use default dequantize for remaining vals
