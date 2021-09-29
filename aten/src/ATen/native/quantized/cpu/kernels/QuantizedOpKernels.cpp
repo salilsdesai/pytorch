@@ -2855,9 +2855,9 @@ void dequantize_tensor_arm<c10::quint8>(
     const int32_t zero_point) {
   float* out = rtensor.data_ptr<float>();
 
-  const int32x4_t zero_point_s32x4 = vdupq_n_s32(zero_point);
   const float32x4_t scale_fp32x4 = vdupq_n_f32(scale);
-  const int16x4_t zero_s16x4 = vdup_n_s16(0);
+  const float32x4_t scale_times_zero_point_fp32x4 =
+      vmulq_f32(scale_fp32x4, vdupq_n_f32(zero_point));
 
   int i;
   for (i = 0; i + 16 < N; i += 16) {
@@ -2871,29 +2871,24 @@ void dequantize_tensor_arm<c10::quint8>(
     const uint8x16_t vin_u8 = vld1q_u8(next_vals);
     const uint16x8_t vin_low_u16 = vmovl_u8(vget_low_u8(vin_u8)); // 0 through 7
     const uint16x8_t vin_high_u16 = vmovl_high_u8(vin_u8); // 8 through 15
-    const uint16x4_t vin_u16x4[] = {
-      vget_low_u16(vin_low_u16), // 0, 1, 2, 3
-      vget_high_u16(vin_low_u16), // 4, 5, 6, 7
-      vget_low_u16(vin_high_u16), // 8, 9, 10, 11
-      vget_high_u16(vin_high_u16) // 12, 13, 14, 15
+    const uint32x4_t vin_u32x4[] = {
+      vmovl_u16(vget_low_u16(vin_low_u16)), // 0, 1, 2, 3
+      vmovl_high_u16(vin_low_u16), // 4, 5, 6, 7
+      vmovl_u16(vget_low_u16(vin_high_u16)), // 8, 9, 10, 11
+      vmovl_high_u16(vin_high_u16) // 12, 13, 14, 15
     };
 
     for (j = 0; j < 4; j++) {
       vst1q_f32( // Store at out pointer
         out,
-        vmulq_f32( // Multiply by scale
-          vcvtq_f32_s32( // int32 -> float32
-            vsubq_s32( // Subtract zero point
-              vmovl_s16( // int16 -> int32
-                vuqadd_s16( // uint16 -> int16 (by adding 0)
-                  zero_s16x4,
-                  vin_u16x4[j]
-                )
-              ),
-              zero_point_s32x4
-            )
+        vsubq_f32( // Subtract scale * zero point
+          vmulq_f32( // Multiply by scale
+            vcvtq_f32_u32( // uint32 -> float32
+              vin_u32x4[j]
+            ),
+            scale_fp32x4
           ),
-          scale_fp32x4
+          scale_times_zero_point_fp32x4
         )
       );
       out += 4;
