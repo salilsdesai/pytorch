@@ -299,13 +299,11 @@ TEST(TestQTensor, TestArmVectorizedParallelQuantizeDequantize) {
   quint8* qu_data = qu.data_ptr<quint8>();
   for (int i = 0; i < numel; i++) {
     ASSERT_EQ(qu_data[i].val_, native::quantize_val<quint8>(scale, zero_point, x_values[i]).val_);
-    std::cout << "Equal: (" << qu_data[i].val_ << ", " << native::quantize_val<quint8>(scale, zero_point, x_values[i]).val_ << ")" << std::endl;
   }
   Tensor ru = qu.dequantize();
   float* ru_data = ru.data_ptr<float>();
   for (int i = 0; i < numel; i++) {
     ASSERT_EQ(ru_data[i], native::dequantize_val(scale, zero_point, qu_data[i]));
-    std::cout << "Equal: (" << ru_data[i] << ", " << native::dequantize_val(scale, zero_point, qu_data[i]) << ")" << std::endl;
   }
 
   // Signed Int8
@@ -313,13 +311,11 @@ TEST(TestQTensor, TestArmVectorizedParallelQuantizeDequantize) {
   qint8* qs_data = qs.data_ptr<qint8>();
   for (int i = 0; i < numel; i++) {
     ASSERT_EQ(qs_data[i].val_, native::quantize_val<qint8>(scale, zero_point, x_values[i]).val_);
-    std::cout << "Equal: (" << qs_data[i].val_ << ", " << native::quantize_val<qint8>(scale, zero_point, x_values[i]).val_ << ")" << std::endl;
   }
   Tensor rs = qs.dequantize();
   float* rs_data = rs.data_ptr<float>();
   for (int i = 0; i < numel; i++) {
     ASSERT_EQ(rs_data[i], native::dequantize_val(scale, zero_point, qs_data[i]));
-    std::cout << "Equal: (" << rs_data[i] << ", " << native::dequantize_val(scale, zero_point, qs_data[i]) << ")" << std::endl;
   }
 }
 #endif // (__ARM_NEON__) || defined(__aarch64__)

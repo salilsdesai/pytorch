@@ -9,7 +9,6 @@
 #include <ATen/native/quantized/fake_quant_affine.h>
 #include <ATen/native/quantized/cpu/quantized_ops.h>
 #include <c10/util/irange.h>
-#include <iostream>
 
 #include <cmath>
 #ifdef USE_FBGEMM
@@ -2780,14 +2779,6 @@ void quantize_tensor_arm<c10::quint8>(
 #endif
 }
 
-int8_t get_underlying_val_signed(c10::qint8 qval) {
-  return qval.val_;
-}
-
-uint8_t get_underlying_val_unsigned(c10::quint8 qval) {
-  return qval.val_;
-}
-
 // Generic template defaults to naive dequantize implementation
 template <typename T>
 void dequantize_tensor_arm(
@@ -2797,7 +2788,6 @@ void dequantize_tensor_arm(
     const float scale,
     const int32_t zero_point) {
   float* out = rtensor.data_ptr<float>();
-  std::cout << "- - - - In Dequantize Tensor Arm GENERIC (N: " << N << ")" << std::endl;
   for (int i = 0; i < N; ++i) {
     out[i] = dequantize_val<T>(scale, zero_point, in[i]);
   }
@@ -2810,114 +2800,23 @@ void dequantize_tensor_arm<c10::qint8>(
     const int64_t N,
     const float scale,
     const int32_t zero_point) {
-  std::cout << "- - - - In Dequantize Tensor Arm QINT8 (N: " << N << ", Scale: " << scale << ", Zero Point: " << zero_point << ")" << std::endl;
   float* out = rtensor.data_ptr<float>();
 
-  std::cout << "----------------------\nFULL DEBUG\n----------------------\n";
-
-  int j;
-
   const int32x4_t zero_point_s32x4 = vdupq_n_s32(zero_point);
-
-          int32_t zero_point_32x4_vals[4];
-          vst1q_s32(zero_point_32x4_vals, zero_point_s32x4);
-          std::cout << "zero_point_s32x4: ";
-          for (j = 0; j < 4; j++) {
-            std::cout << zero_point_32x4_vals[j] << ", ";
-          }
-          std::cout << std::endl;
-
   const float32x4_t scale_fp32x4 = vdupq_n_f32(scale);
-
-          float scale_fp32x4_vals[4];
-          vst1q_f32(scale_fp32x4_vals, scale_fp32x4);
-          std::cout << "scale_fp32x4: ";
-          for (j = 0; j < 4; j++) {
-            std::cout << scale_fp32x4_vals[j] << ", ";
-          }
-          std::cout << std::endl;
-
-  const auto make_output = [&zero_point_s32x4, &scale_fp32x4](int32x4_t vin_s32x4) {
-
-          int j;
-
-          std::cout << "In Make Output" << std::endl;
-
-          int32_t vin_s32x4_vals[4];
-          vst1q_s32(vin_s32x4_vals, vin_s32x4);
-          std::cout << "vin_s32x4: ";
-          for (j = 0; j < 4; j++) {
-            std::cout << vin_s32x4_vals[j] << ", ";
-          }
-          std::cout << std::endl;
-
-    const int32x4_t minus_zero_point_s32x4 = vsubq_s32(vin_s32x4, zero_point_s32x4);
-
-          int32_t minus_zero_point_s32x4_vals[4];
-          vst1q_s32(minus_zero_point_s32x4_vals, minus_zero_point_s32x4);
-          std::cout << "minus_zero_point_s32x4: ";
-          for (j = 0; j < 4; j++) {
-            std::cout << minus_zero_point_s32x4_vals[j] << ", ";
-          }
-          std::cout << std::endl;
-
-    const float32x4_t minus_zero_point_fp32x4 = vcvtq_f32_s32(minus_zero_point_s32x4);
-
-          float minus_zero_point_fp32x4_vals[4];
-          vst1q_f32(minus_zero_point_fp32x4_vals, minus_zero_point_fp32x4);
-          std::cout << "minus_zero_point_fp32x4: ";
-          for (j = 0; j < 4; j++) {
-            std::cout << minus_zero_point_fp32x4_vals[j] << ", ";
-          }
-          std::cout << std::endl;
-
-    const float32x4_t times_scale_fp32x4 = vmulq_f32(minus_zero_point_fp32x4, scale_fp32x4);
-
-          float times_scale_fp32x4_vals[4];
-          vst1q_f32(times_scale_fp32x4_vals, times_scale_fp32x4);
-          std::cout << "times_scale_fp32x4: ";
-          for (j = 0; j < 4; j++) {
-            std::cout << times_scale_fp32x4_vals[j] << ", ";
-          }
-          std::cout << std::endl;
-
-    return times_scale_fp32x4;
-  };
 
   int i;
   for (i = 0; i + 16 < N; i += 16) {
+    int j;
     int8_t next_vals[16];
-    std::transform(in, in + 16, next_vals, get_underlying_val_signed);
+    for (j = 0; j < 16; j++) {
+      next_vals[j] = in[j].val_;
+    }
     in += 16;
 
-          std::cout << "Next Vals: ";
-          for (j = 0; j < 16; j++) {
-            std::cout << ((int)next_vals[j]) << ", ";
-          }
-          std::cout << std::endl;
-
     const int8x16_t vin_s8 = vld1q_s8(next_vals);
-
-          int8_t vin_s8_vals[16];
-          vst1q_s8(vin_s8_vals, vin_s8);
-          std::cout << "vin_s8: ";
-          for (j = 0; j < 16; j++) {
-            std::cout << ((int)vin_s8_vals[j]) << ", ";
-          }
-          std::cout << std::endl;
-
-    const int16x8_t vin_low_s16 = vmovl_s8(vget_low_s8(vin_s8)); // 0, 1, 2, 3, 4, 5, 6, 7
-    const int16x8_t vin_high_s16 = vmovl_high_s8(vin_s8); // 8, 9, 10, 11, 12, 13, 14, 15
-
-          int16_t vin_s16_vals[16];
-          vst1q_s16(vin_s16_vals, vin_low_s16);
-          vst1q_s16(vin_s16_vals + 8, vin_high_s16);
-          std::cout << "vin_s16: ";
-          for (j = 0; j < 16; j++) {
-            std::cout << vin_s16_vals[j] << ", ";
-          }
-          std::cout << std::endl;
-
+    const int16x8_t vin_low_s16 = vmovl_s8(vget_low_s8(vin_s8)); // 0 through 7
+    const int16x8_t vin_high_s16 = vmovl_high_s8(vin_s8); // 8 through 15
     const int32x4_t vin_s32x4[] = {
       vmovl_s16(vget_low_s16(vin_low_s16)), // 0, 1, 2, 3
       vmovl_high_s16(vin_low_s16), // 4, 5, 6, 7
@@ -2925,16 +2824,24 @@ void dequantize_tensor_arm<c10::qint8>(
       vmovl_high_s16(vin_high_s16) // 12, 13, 14, 15
     };
 
-    float32x4_t output_fp32x4[4];
-    std::transform(vin_s32x4, vin_s32x4 + 4, output_fp32x4, make_output);
-
     for (j = 0; j < 4; j++) {
-      vst1q_f32(out, output_fp32x4[j]);
+      vst1q_f32( // Store at out pointer
+        out,
+        vmulq_f32( // Multiply by scale
+          vcvtq_f32_s32( // int32 -> float32
+            vsubq_s32( // Subtract zero point
+              vin_s32x4[j],
+              zero_point_s32x4
+            )
+          ),
+          scale_fp32x4
+        )
+      );
       out += 4;
     }
   }
 
-  for (; i < N; ++i) {
+  for (; i < N; ++i) { // use default dequantize for remaining vals
     (*out++) = dequantize_val<c10::qint8>(scale, zero_point, (*in++));
   }
 }
@@ -2946,143 +2853,24 @@ void dequantize_tensor_arm<c10::quint8>(
     const int64_t N,
     const float scale,
     const int32_t zero_point) {
-  std::cout << "- - - - In Dequantize Tensor Arm QUINT8 (N: " << N << ")" << std::endl;
   float* out = rtensor.data_ptr<float>();
 
-  std::cout << "----------------------\nFULL DEBUG\n----------------------\n";
-
-  int j;
-
   const int32x4_t zero_point_s32x4 = vdupq_n_s32(zero_point);
-
-          int32_t zero_point_32x4_vals[4];
-          vst1q_s32(zero_point_32x4_vals, zero_point_s32x4);
-          std::cout << "zero_point_s32x4: ";
-          for (j = 0; j < 4; j++) {
-            std::cout << zero_point_32x4_vals[j] << ", ";
-          }
-          std::cout << std::endl;
-
   const float32x4_t scale_fp32x4 = vdupq_n_f32(scale);
-
-          float scale_fp32x4_vals[4];
-          vst1q_f32(scale_fp32x4_vals, scale_fp32x4);
-          std::cout << "scale_fp32x4: ";
-          for (j = 0; j < 4; j++) {
-            std::cout << scale_fp32x4_vals[j] << ", ";
-          }
-          std::cout << std::endl;
-
-  const int16x4_t zero_16x4 = vdup_n_s16(0);
-
-  const auto make_output = [&zero_16x4, &zero_point_s32x4, &scale_fp32x4](uint16x4_t vin_u16x4) {
-
-          int j;
-
-          std::cout << "In Make Output" << std::endl;
-
-          uint16_t vin_u16x4_vals[4];
-          vst1_u16(vin_u16x4_vals, vin_u16x4);
-          std::cout << "vin_u16x4: ";
-          for (j = 0; j < 4; j++) {
-            std::cout << vin_u16x4_vals[j] << ", ";
-          }
-          std::cout << std::endl;
-
-    const int16x4_t vin_s16x4 = vuqadd_s16(zero_16x4, vin_u16x4);
-
-          int16_t vin_s16x4_vals[4];
-          vst1_s16(vin_s16x4_vals, vin_s16x4);
-          std::cout << "vin_s16x4: ";
-          for (j = 0; j < 4; j++) {
-            std::cout << vin_s16x4_vals[j] << ", ";
-          }
-          std::cout << std::endl;
-
-    const int32x4_t vin_s32x4 = vmovl_s16(vin_s16x4);
-
-          int32_t vin_s32x4_vals[4];
-          vst1q_s32(vin_s32x4_vals, vin_s32x4);
-          std::cout << "vin_s32x4: ";
-          for (j = 0; j < 4; j++) {
-            std::cout << vin_s32x4_vals[j] << ", ";
-          }
-          std::cout << std::endl;
-
-    const int32x4_t minus_zero_point_s32x4 = vsubq_s32(vin_s32x4, zero_point_s32x4);
-
-          int32_t minus_zero_point_s32x4_vals[4];
-          vst1q_s32(minus_zero_point_s32x4_vals, minus_zero_point_s32x4);
-          std::cout << "minus_zero_point_s32x4: ";
-          for (j = 0; j < 4; j++) {
-            std::cout << minus_zero_point_s32x4_vals[j] << ", ";
-          }
-          std::cout << std::endl;
-
-    const float32x4_t minus_zero_point_fp32x4 = vcvtq_f32_s32(minus_zero_point_s32x4);
-
-          float minus_zero_point_fp32x4_vals[4];
-          vst1q_f32(minus_zero_point_fp32x4_vals, minus_zero_point_fp32x4);
-          std::cout << "minus_zero_point_fp32x4: ";
-          for (j = 0; j < 4; j++) {
-            std::cout << minus_zero_point_fp32x4_vals[j] << ", ";
-          }
-          std::cout << std::endl;
-
-    const float32x4_t times_scale_fp32x4 = vmulq_f32(minus_zero_point_fp32x4, scale_fp32x4);
-
-          float times_scale_fp32x4_vals[4];
-          vst1q_f32(times_scale_fp32x4_vals, times_scale_fp32x4);
-          std::cout << "times_scale_fp32x4: ";
-          for (j = 0; j < 4; j++) {
-            std::cout << times_scale_fp32x4_vals[j] << ", ";
-          }
-          std::cout << std::endl;
-
-    return times_scale_fp32x4;
-  };
+  const int16x4_t zero_s16x4 = vdup_n_s16(0);
 
   int i;
   for (i = 0; i + 16 < N; i += 16) {
+    int j;
     uint8_t next_vals[16];
-    std::transform(in, in + 16, next_vals, get_underlying_val_unsigned);
+    for (j = 0; j < 16; j++) {
+      next_vals[j] = in[j].val_;
+    }
     in += 16;
 
-          std::cout << "Next Vals: ";
-          for (j = 0; j < 16; j++) {
-            std::cout << ((int)next_vals[j]) << ", ";
-          }
-          std::cout << std::endl;
-
     const uint8x16_t vin_u8 = vld1q_u8(next_vals);
-
-          uint8_t vin_u8_vals[16];
-          vst1q_u8(vin_u8_vals, vin_u8);
-          std::cout << "vin_u8: ";
-          for (j = 0; j < 16; j++) {
-            std::cout << ((int)vin_u8_vals[j]) << ", ";
-          }
-          std::cout << std::endl;
-
-    const uint16x8_t vin_low_u16 = vmovl_u8(vget_low_u8(vin_u8)); // 0, 1, 2, 3, 4, 5, 6, 7
-    const uint16x8_t vin_high_u16 = vmovl_high_u8(vin_u8); // 8, 9, 10, 11, 12, 13, 14, 15
-
-          uint16_t vin_u16_vals[16];
-          vst1q_u16(vin_u16_vals, vin_low_u16);
-          vst1q_u16(vin_u16_vals + 8, vin_high_u16);
-          std::cout << "vin_u16: ";
-          for (j = 0; j < 16; j++) {
-            std::cout << vin_u16_vals[j] << ", ";
-          }
-          std::cout << std::endl;
-
-    // const uint32x4_t vin_u32[] = {
-    //   vmovl_u16(vget_low_u16(vin_low_u16)), // 0, 1, 2, 3
-    //   vmovl_high_u16(vin_low_u16), // 4, 5, 6, 7
-    //   vmovl_u16(vget_low_u16(vin_high_u16)), // 8, 9, 10, 11
-    //   movl_high_u16(vin_high_u16) // 12, 13, 14, 15
-    // };
-
+    const uint16x8_t vin_low_u16 = vmovl_u8(vget_low_u8(vin_u8)); // 0 through 7
+    const uint16x8_t vin_high_u16 = vmovl_high_u8(vin_u8); // 8 through 15
     const uint16x4_t vin_u16x4[] = {
       vget_low_u16(vin_low_u16), // 0, 1, 2, 3
       vget_high_u16(vin_low_u16), // 4, 5, 6, 7
@@ -3090,16 +2878,29 @@ void dequantize_tensor_arm<c10::quint8>(
       vget_high_u16(vin_high_u16) // 12, 13, 14, 15
     };
 
-    float32x4_t output_fp32x4[4];
-    std::transform(vin_u16x4, vin_u16x4 + 4, output_fp32x4, make_output);
-
     for (j = 0; j < 4; j++) {
-      vst1q_f32(out, output_fp32x4[j]);
+      vst1q_f32( // Store at out pointer
+        out,
+        vmulq_f32( // Multiply by scale
+          vcvtq_f32_s32( // int32 -> float32
+            vsubq_s32( // Subtract zero point
+              vmovl_s16( // int16 -> int32
+                vuqadd_s16( // uint16 -> int16 (by adding 0)
+                  zero_s16x4,
+                  vin_u16x4[j]
+                )
+              ),
+              zero_point_s32x4
+            )
+          ),
+          scale_fp32x4
+        )
+      );
       out += 4;
     }
   }
 
-  for (; i < N; ++i) {
+  for (; i < N; ++i) { // use default dequantize for remaining vals
     (*out++) = dequantize_val<c10::quint8>(scale, zero_point, (*in++));
   }
 }
@@ -3139,10 +2940,7 @@ void dequantize_tensor_per_tensor_affine_cpu(
     Tensor& rtensor,
     double scale,
     int64_t zero_point) {
-  std::cout << "- In MAIN Quantize Tensor Per Tensor Affine CPU" << std::endl;
-  std::cout << "- - Numel: " << rtensor.numel() << ", Scale: " << scale << ", Zero Point: " << zero_point << std::endl;
 #if defined(__ARM_NEON__) || defined(__aarch64__)
-  std::cout << "- - - In ARM_NEON or AARCH64" << std::endl;
   AT_DISPATCH_QINT_TYPES(
       qtensor.scalar_type(), "dequantize_tensor_per_tensor_affine_cpu", [&]() {
         check_tensor_memory_format(qtensor, rtensor);
@@ -3151,7 +2949,6 @@ void dequantize_tensor_per_tensor_affine_cpu(
             qdata, rtensor, qtensor.numel(), scale, zero_point);
       });
 #else
-  std::cout << "- - - NOT In ARM_NEON or AARCH64" << std::endl;
   AT_DISPATCH_QINT_TYPES(
       qtensor.scalar_type(), "dequantize_tensor_per_tensor_affine_cpu", [&]() {
       check_tensor_memory_format(qtensor, rtensor);
