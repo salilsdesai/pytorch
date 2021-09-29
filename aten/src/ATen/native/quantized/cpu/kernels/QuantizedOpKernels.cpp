@@ -2812,6 +2812,7 @@ void dequantize_tensor_arm<c10::qint8>(
     const int64_t N,
     const float scale,
     const int32_t zero_point) {
+  const int8_t* in_underlying = reinterpret_cast<const int8_t*>(in);
   float* out = rtensor.data_ptr<float>();
 
   const int32x4_t zero_point_s32x4 = vdupq_n_s32(zero_point);
@@ -2819,14 +2820,7 @@ void dequantize_tensor_arm<c10::qint8>(
 
   int i;
   for (i = 0; i + 16 < N; i += 16) {
-    int j;
-    int8_t next_vals[16];
-    for (j = 0; j < 16; j++) {
-      next_vals[j] = in[j].val_;
-    }
-    in += 16;
-
-    const int8x16_t vin_s8 = vld1q_s8(next_vals);
+    const int8x16_t vin_s8 = vld1q_s8(in_underlying);
     const int16x8_t vin_low_s16 = vmovl_s8(vget_low_s8(vin_s8)); // 0 through 7
     const int16x8_t vin_high_s16 = VMOVL_HIGH_S8(vin_s8); // 8 through 15
     const int32x4_t vin_s32x4[] = {
@@ -2836,6 +2830,7 @@ void dequantize_tensor_arm<c10::qint8>(
       VMOVL_HIGH_S16(vin_high_s16) // 12, 13, 14, 15
     };
 
+    int j;
     for (j = 0; j < 4; j++) {
       vst1q_f32( // Store at out pointer
         out,
@@ -2851,6 +2846,7 @@ void dequantize_tensor_arm<c10::qint8>(
       );
       out += 4;
     }
+    in_underlying += 16;
   }
 
   for (; i < N; ++i) { // use default dequantize for remaining vals
@@ -2865,6 +2861,7 @@ void dequantize_tensor_arm<c10::quint8>(
     const int64_t N,
     const float scale,
     const int32_t zero_point) {
+  const uint8_t* in_underlying = reinterpret_cast<const uint8_t*>(in);
   float* out = rtensor.data_ptr<float>();
 
   const float32x4_t scale_fp32x4 = vdupq_n_f32(scale);
@@ -2873,14 +2870,7 @@ void dequantize_tensor_arm<c10::quint8>(
 
   int i;
   for (i = 0; i + 16 < N; i += 16) {
-    int j;
-    uint8_t next_vals[16];
-    for (j = 0; j < 16; j++) {
-      next_vals[j] = in[j].val_;
-    }
-    in += 16;
-
-    const uint8x16_t vin_u8 = vld1q_u8(next_vals);
+    const uint8x16_t vin_u8 = vld1q_u8(in_underlying);
     const uint16x8_t vin_low_u16 = vmovl_u8(vget_low_u8(vin_u8)); // 0 through 7
     const uint16x8_t vin_high_u16 = VMOVL_HIGH_U8(vin_u8); // 8 through 15
     const uint32x4_t vin_u32x4[] = {
@@ -2890,6 +2880,7 @@ void dequantize_tensor_arm<c10::quint8>(
       VMOVL_HIGH_U16(vin_high_u16) // 12, 13, 14, 15
     };
 
+    int j;
     for (j = 0; j < 4; j++) {
       vst1q_f32( // Store at out pointer
         out,
@@ -2905,6 +2896,7 @@ void dequantize_tensor_arm<c10::quint8>(
       );
       out += 4;
     }
+    in += 16;
   }
 
   for (; i < N; ++i) { // use default dequantize for remaining vals
