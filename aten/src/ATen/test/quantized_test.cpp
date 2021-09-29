@@ -281,90 +281,47 @@ TEST(TestQTensor, FromBlobQuantizedPerChannel) {
   TORCH_CHECK(customDataDeleted);
 }
 
-TEST(TestQTensor, CompareSalilUnsigned) {
-  float scale = 2;
-  int zero_point = 10;
-  int numel = 17;
-
-  Tensor q = at::_empty_affine_quantized(
-      {numel}, at::device(at::kCPU).dtype(kQUInt8), scale, zero_point);
-  auto* q_data = q.data_ptr<quint8>();
-  for (int i = 0; i < numel; ++i) {
-    q_data[i].val_ = 2 * i + 11;
-  }
-
-  // dequantize
-  auto r = q.dequantize();
-  auto* r_data = r.data_ptr<float>();
-
-  for (int i = 0; i < numel; ++i) {
-    float native = native::dequantize_val(scale, zero_point, q_data[i]);
-    float expected = (q_data[i].val_ - zero_point) * scale;
-    std::cout << "(r_data, native, explicit): (" << r_data[i] << ", " << native << ", " << expected << ")" << std::endl;
-    // ASSERT_EQ(
-    //     r_data[i],
-    //     native);
-  }
-}
-
-TEST(TestQTensor, CompareSalilSigned) {
-  float scale = 2;
-  int zero_point = 10;
-  int numel = 17;
-
-  Tensor q = at::_empty_affine_quantized(
-      {numel}, at::device(at::kCPU).dtype(kQInt8), scale, zero_point);
-  auto* q_data = q.data_ptr<qint8>();
-  for (int i = 0; i < numel; ++i) {
-    q_data[i].val_ = 2 * i + 11;
-  }
-
-  // dequantize
-  auto r = q.dequantize();
-  auto* r_data = r.data_ptr<float>();
-
-  for (int i = 0; i < numel; ++i) {
-    float native = native::dequantize_val(scale, zero_point, q_data[i]);
-    float expected = (q_data[i].val_ - zero_point) * scale;
-    std::cout << "(r_data, native, explicit): (" << r_data[i] << ", " << native << ", " << expected << ")" << std::endl;
-    // ASSERT_EQ(
-    //     r_data[i],
-    //     native);
-  }
-}
-
-TEST(TestQTensor, TestArmVectorizedParallelQuantizeDequantize) {
 #if defined(__ARM_NEON__) || defined(__aarch64__)
-
-  /*
-  float scale = 2;
+TEST(TestQTensor, TestArmVectorizedParallelQuantizeDequantize) {
+  float scale = 7;
   int zero_point = 10;
-  int numel = 17;
+  int numel = 35;
 
   std::vector<float> x_values;
   for (int i = 0; i < numel; i++) {
-    x_values.push_back(scale * i);
+    x_values.push_back(9 * i);
   }
 
   Tensor x = from_blob(x_values.data(), x_values.size());
-  Tensor q = at::quantize_per_tensor(x, scale, zero_point, kQUInt8);
 
-  quint8* q_data = q.data_ptr<quint8>();
-
+  // Unsigned Int8
+  Tensor qu = at::quantize_per_tensor(x, scale, zero_point, kQUInt8);
+  quint8* qu_data = qu.data_ptr<quint8>();
   for (int i = 0; i < numel; i++) {
-    ASSERT_EQ(q_data[i].val_, native::quantize_val<quint8>(scale, zero_point, x_values[i]).val_);
+    ASSERT_EQ(qu_data[i].val_, native::quantize_val<quint8>(scale, zero_point, x_values[i]).val_);
+    std::cout << "Equal: (" << qu_data[i].val_ << ", " << native::quantize_val<quint8>(scale, zero_point, x_values[i]).val_ << ")" << std::endl;
+  }
+  Tensor ru = qu.dequantize();
+  float* ru_data = ru.data_ptr<float>();
+  for (int i = 0; i < numel; i++) {
+    ASSERT_EQ(ru_data[i], native::dequantize_val(scale, zero_point, qu_data[i]));
+    std::cout << "Equal: (" << ru_data[i] << ", " << native::dequantize_val(scale, zero_point, qu_data[i]) << ")" << std::endl;
   }
 
-  Tensor r = q.dequantize();
-  float* r_data = r.data_ptr<float>();
-
+  // Signed Int8
+  Tensor qs = at::quantize_per_tensor(x, scale, zero_point, kQInt8);
+  qint8* qs_data = qs.data_ptr<qint8>();
   for (int i = 0; i < numel; i++) {
-    ASSERT_EQ(r_data[i], native::dequantize_val(scale, zero_point, q_data[i]));
+    ASSERT_EQ(qs_data[i].val_, native::quantize_val<qint8>(scale, zero_point, x_values[i]).val_);
+    std::cout << "Equal: (" << qs_data[i].val_ << ", " << native::quantize_val<qint8>(scale, zero_point, x_values[i]).val_ << ")" << std::endl;
   }
-  */
-
-#endif // (__ARM_NEON__) || defined(__aarch64__)
-
+  Tensor rs = qs.dequantize();
+  float* rs_data = rs.data_ptr<float>();
+  for (int i = 0; i < numel; i++) {
+    ASSERT_EQ(rs_data[i], native::dequantize_val(scale, zero_point, qs_data[i]));
+    std::cout << "Equal: (" << rs_data[i] << ", " << native::dequantize_val(scale, zero_point, qs_data[i]) << ")" << std::endl;
+  }
 }
+#endif // (__ARM_NEON__) || defined(__aarch64__)
 
 #endif // ATEN_CPU_STATIC_DISPATCH
