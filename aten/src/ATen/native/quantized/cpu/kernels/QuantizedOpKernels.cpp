@@ -2779,6 +2779,18 @@ void quantize_tensor_arm<c10::quint8>(
 #endif
 }
 
+#if defined(__aarch64__)
+#define VMOVL_HIGH_U8(x) vmovl_high_u8(x)
+#define VMOVL_HIGH_S8(x) vmovl_high_s8(x)
+#define VMOVL_HIGH_U16(x) vmovl_high_u16(x)
+#define VMOVL_HIGH_S16(x) vmovl_high_s16(x)
+#else // vmovl_high intrinsic not supported
+#define VMOVL_HIGH_U8(x) vmovl_u8(vget_high_u8(x))
+#define VMOVL_HIGH_S8(x) vmovl_s8(vget_high_s8(x))
+#define VMOVL_HIGH_U16(x) vmovl_u16(vget_high_u16(x))
+#define VMOVL_HIGH_S16(x) vmovl_s16(vget_high_s16(x))
+#endif
+
 // Generic template defaults to naive dequantize implementation
 template <typename T>
 void dequantize_tensor_arm(
@@ -2816,12 +2828,12 @@ void dequantize_tensor_arm<c10::qint8>(
 
     const int8x16_t vin_s8 = vld1q_s8(next_vals);
     const int16x8_t vin_low_s16 = vmovl_s8(vget_low_s8(vin_s8)); // 0 through 7
-    const int16x8_t vin_high_s16 = vmovl_high_s8(vin_s8); // 8 through 15
+    const int16x8_t vin_high_s16 = VMOVL_HIGH_S8(vin_s8); // 8 through 15
     const int32x4_t vin_s32x4[] = {
       vmovl_s16(vget_low_s16(vin_low_s16)), // 0, 1, 2, 3
-      vmovl_high_s16(vin_low_s16), // 4, 5, 6, 7
+      VMOVL_HIGH_S16(vin_low_s16), // 4, 5, 6, 7
       vmovl_s16(vget_low_s16(vin_high_s16)), // 8, 9, 10, 11
-      vmovl_high_s16(vin_high_s16) // 12, 13, 14, 15
+      VMOVL_HIGH_S16(vin_high_s16) // 12, 13, 14, 15
     };
 
     for (j = 0; j < 4; j++) {
@@ -2870,12 +2882,12 @@ void dequantize_tensor_arm<c10::quint8>(
 
     const uint8x16_t vin_u8 = vld1q_u8(next_vals);
     const uint16x8_t vin_low_u16 = vmovl_u8(vget_low_u8(vin_u8)); // 0 through 7
-    const uint16x8_t vin_high_u16 = vmovl_high_u8(vin_u8); // 8 through 15
+    const uint16x8_t vin_high_u16 = VMOVL_HIGH_U8(vin_u8); // 8 through 15
     const uint32x4_t vin_u32x4[] = {
       vmovl_u16(vget_low_u16(vin_low_u16)), // 0, 1, 2, 3
-      vmovl_high_u16(vin_low_u16), // 4, 5, 6, 7
+      VMOVL_HIGH_U16(vin_low_u16), // 4, 5, 6, 7
       vmovl_u16(vget_low_u16(vin_high_u16)), // 8, 9, 10, 11
-      vmovl_high_u16(vin_high_u16) // 12, 13, 14, 15
+      VMOVL_HIGH_U16(vin_high_u16) // 12, 13, 14, 15
     };
 
     for (j = 0; j < 4; j++) {
