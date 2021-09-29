@@ -9,6 +9,7 @@
 #include <ATen/native/quantized/fake_quant_affine.h>
 #include <ATen/native/quantized/cpu/quantized_ops.h>
 #include <c10/util/irange.h>
+#include <iostream>
 
 #include <cmath>
 #ifdef USE_FBGEMM
@@ -2896,7 +2897,7 @@ void dequantize_tensor_arm<c10::quint8>(
       );
       out += 4;
     }
-    in += 16;
+    in_underlying += 16;
   }
 
   for (; i < N; ++i) { // use default dequantize for remaining vals
