@@ -1,4 +1,5 @@
 #include <ATen/ATen.h>
+#include <algorithm>  // std::min
 #include <iostream>
 
 #include <benchmark/benchmark.h>
@@ -68,14 +69,14 @@ static void dequantize_qint32(benchmark::State& state) {
 
 static void GenerateNumel(benchmark::internal::Benchmark* b) {
   b->ArgNames({"numel"});
-  for (size_t numel = 1; numel <= 4096; numel *= 2) {
+  for (size_t numel = 1; numel < 10000; numel += std::min((int)numel, 500)) {
     b->Args({numel});
   }
 }
 
-BENCHMARK(quantize_quint8)->Apply(GenerateNumel);
-BENCHMARK(quantize_qint32)->Apply(GenerateNumel);
-BENCHMARK(dequantize_quint8)->Apply(GenerateNumel);
-BENCHMARK(dequantize_qint8)->Apply(GenerateNumel);
-BENCHMARK(dequantize_qint32)->Apply(GenerateNumel);
+BENCHMARK(quantize_quint8)->Apply(GenerateNumel)->Threads(4)->UseRealTime();
+BENCHMARK(quantize_qint32)->Apply(GenerateNumel)->Threads(4)->UseRealTime();
+BENCHMARK(dequantize_quint8)->Apply(GenerateNumel)->Threads(4)->UseRealTime();
+BENCHMARK(dequantize_qint8)->Apply(GenerateNumel)->Threads(4)->UseRealTime();
+BENCHMARK(dequantize_qint32)->Apply(GenerateNumel)->Threads(4)->UseRealTime();
 BENCHMARK_MAIN();
