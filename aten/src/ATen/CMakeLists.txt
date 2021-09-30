@@ -504,6 +504,8 @@ list(APPEND ATen_MOBILE_BENCHMARK_SRCS
   ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/quantize_per_channel.cpp)
 list(APPEND ATen_MOBILE_BENCHMARK_SRCS
   ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/stateful_conv1d.cpp)
+list(APPEND ATen_MOBILE_BENCHMARK_SRCS
+  ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/quantize_dequantize_per_tensor.cpp)
 
 # Pass source, includes, and libs to parent
 set(ATen_CORE_SRCS ${ATen_CORE_SRCS} PARENT_SCOPE)
