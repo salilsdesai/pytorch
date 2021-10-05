@@ -2794,7 +2794,7 @@ void quantize_tensor_arm<c10::quint8>(
 // Generic template defaults to naive dequantize implementation
 template <typename T>
 void dequantize_tensor_arm(
-    const T* in,
+    const T* __restrict__ in,
     float* __restrict__ out,
     const int64_t N,
     const float scale,
@@ -2806,7 +2806,7 @@ void dequantize_tensor_arm(
 
 template <>
 void dequantize_tensor_arm<c10::qint8>(
-    const c10::qint8* in,
+    const c10::qint8* __restrict__ in,
     float* __restrict__ out,
     const int64_t N,
     const float scale,
@@ -2850,7 +2850,7 @@ void dequantize_tensor_arm<c10::qint8>(
 
 template <>
 void dequantize_tensor_arm<c10::quint8>(
-    const c10::quint8* in,
+    const c10::quint8* __restrict__ in,
     float* __restrict__ out,
     const int64_t N,
     const float scale,
