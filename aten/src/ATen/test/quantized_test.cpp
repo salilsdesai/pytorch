@@ -283,16 +283,15 @@ TEST(TestQTensor, FromBlobQuantizedPerChannel) {
 
 #if defined(__ARM_NEON__) || defined(__aarch64__)
 TEST(TestQTensor, TestArmVectorizedAndParallelQuantizeDequantize) {
-  float scale = 7;
-  int zero_point = 10;
-  int numel = 132; // Each thread has 2 vectorized dequantize + 1 non-vectorized
+  const float scale = 7;
+  const int numel = 132; // Each thread has 2 vectorized dequantize + 1 non-vectorized
 
   std::vector<float> x_values;
   for (int i = 0; i < numel; i++) {
     x_values.push_back(9 * i);
   }
 
-  Tensor x = from_blob(x_values.data(), x_values.size());
+  const Tensor x = from_blob(x_values.data(), x_values.size());
 
   auto test_for_datatype = [&](
       const ScalarType scalar_type,
@@ -301,17 +300,17 @@ TEST(TestQTensor, TestArmVectorizedAndParallelQuantizeDequantize) {
       const int zero_point_min,
       const int zero_point_max) {
     for (int zero_point : {zero_point_min, 10, zero_point_max}) {
-      Tensor q = at::quantize_per_tensor(x, scale, zero_point, scalar_type);
+      const Tensor q = at::quantize_per_tensor(x, scale, zero_point, scalar_type);
       auto* q_data = get_data_ptr(q);
       for (int i = 0; i < numel; i++) {
         ASSERT_EQ(
           q_data[i].val_,
           quantize_val_with_datatype(scale, zero_point, x_values[i]).val_);
       }
-      Tensor r = q.dequantize();
-      float* r_data = r.data_ptr<float>();
+      const Tensor r = q.dequantize();
+      const float* r_data = r.data_ptr<float>();
       for (int i = 0; i < numel; i++) {
-        ASSERT_EQ(
+        ASSERT_FLOAT_EQ(
           r_data[i],
           native::dequantize_val(scale, zero_point, q_data[i]));
       }
