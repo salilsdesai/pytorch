@@ -196,6 +196,15 @@ void pytorch_qnnp_indirection_init_dwconv2d(
   }
 }
 
+void pytorch_qnnp_indirection_init_dwconv3d(
+    pytorch_qnnp_operator_t op,
+    size_t batch_start,
+    size_t step_height,
+    size_t step_width) {
+  // TODO
+}
+
+
 void pytorch_qnnp_indirection_init_deconv2d(
     pytorch_qnnp_operator_t op,
     size_t output_tile_size,

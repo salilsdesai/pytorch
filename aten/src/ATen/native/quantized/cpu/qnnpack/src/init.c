@@ -124,6 +124,11 @@ static void init(void) {
       .mpdw_per_channel = pytorch_q8dwconv_ukernel_mp8x25_per_channel__neon,
       .cr = 8,
   };
+  pytorch_qnnp_params.q8dw27 = (struct pytorch_q8dwconv_mp_parameters){
+      .mpdw = pytorch_q8dwconv_ukernel_mp8x27__neon,
+      .mpdw_per_channel = pytorch_q8dwconv_ukernel_mp8x27_per_channel__neon,
+      .cr = 8,
+  };
   pytorch_qnnp_params.q8sum_rows = (struct pytorch_q8sum_rows_parameters){
       .sum_rows = pytorch_q8sumrows_ukernel_4x__neon,
       .m = 4,
@@ -205,6 +210,11 @@ static void init(void) {
   pytorch_qnnp_params.q8dw25 = (struct pytorch_q8dwconv_mp_parameters){
       .mpdw = pytorch_q8dwconv_ukernel_mp8x25__neon,
       .mpdw_per_channel = pytorch_q8dwconv_ukernel_mp8x25_per_channel__neon,
+      .cr = 8,
+  };
+  pytorch_qnnp_params.q8dw27 = (struct pytorch_q8dwconv_mp_parameters){
+      .mpdw = pytorch_q8dwconv_ukernel_mp8x27__neon,
+      .mpdw_per_channel = pytorch_q8dwconv_ukernel_mp8x27_per_channel__neon,
       .cr = 8,
   };
   pytorch_qnnp_params.q8vadd = pytorch_q8vadd_ukernel__neon;
@@ -289,6 +299,11 @@ static void init(void) {
   pytorch_qnnp_params.q8dw25 = (struct pytorch_q8dwconv_mp_parameters){
       .mpdw = pytorch_q8dwconv_ukernel_mp8x25__sse2,
       .mpdw_per_channel = pytorch_q8dwconv_ukernel_mp8x25_per_channel__sse2,
+      .cr = 8,
+  };
+  pytorch_qnnp_params.q8dw27 = (struct pytorch_q8dwconv_mp_parameters){
+      .mpdw = pytorch_q8dwconv_ukernel_mp8x25__sse2, // TODO
+      .mpdw_per_channel = pytorch_q8dwconv_ukernel_mp8x25_per_channel__sse2, // TODO
       .cr = 8,
   };
   pytorch_qnnp_params.q8vadd = pytorch_q8vadd_ukernel__sse2;

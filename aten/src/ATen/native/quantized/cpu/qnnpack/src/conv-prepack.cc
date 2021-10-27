@@ -1,6 +1,5 @@
 #include <pytorch_qnnpack.h>
 #include <qnnpack/log.h>
-#include <qnnpack/operator.h>
 #include <qnnpack/pack.h>
 #include <qnnpack_func.h>
 #include <cstring>
@@ -95,6 +94,9 @@ PrePackConvWeights::PrePackConvWeights(
               (char*)packed_weights_ +
                   (20 + sizeof(int32_t) / sizeof(uint8_t)) * c_stride,
               false);
+          break;
+        case 27:
+          // TODO
           break;
         default:
           PYTORCH_QNNP_UNREACHABLE;

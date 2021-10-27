@@ -858,6 +858,37 @@ enum pytorch_qnnp_status pytorch_qnnp_run_operator(
               output_height);
           break;
         }
+        case 27: {
+          // TODO: Update
+          struct q8dwconv_context context = {
+              .groups = groups,
+              .group_stride = op->group_stride,
+              .indirection_buffer = (const uint8_t**)op->indirection_buffer,
+              .indirection_buffer_row_stride =
+                  kernel_size + (output_width * width_step - 1) * kernel_height,
+              .indirection_buffer_col_stride =
+                  kernel_height * width_step * sizeof(void*),
+              .packed_weights = op->packed_weights,
+              .output = op->output,
+              .output_height = output_height,
+              .output_width = output_width,
+              .output_row_stride = output_width * op->output_pixel_stride,
+              .output_col_increment =
+                  (op->output_pixel_stride - groups) * sizeof(uint8_t),
+              .quantization_params = op->conv_quantization_params,
+              .multipass_ukernel =
+                  op->per_channel ?
+                      pytorch_qnnp_params.q8dw27.mpdw_per_channel :
+                      pytorch_qnnp_params.q8dw27.mpdw,
+          };
+          pthreadpool_compute_2d(
+              threadpool,
+              (pthreadpool_function_2d_t)compute_dwconv_multiipass,
+              &context,
+              batch_size,
+              output_height);
+          break;
+        }
         default:
           PYTORCH_QNNP_UNREACHABLE;
       }

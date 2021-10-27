@@ -264,8 +264,8 @@ enum pytorch_qnnp_status pytorch_qnnp_create_convolution3d_ndhwc_q8(
   const bool any_padding =
       (input_padding_front | input_padding_left | input_padding_top |
        input_padding_back | input_padding_right | input_padding_bottom) != 0;
-  if ((kernel_size == 9 || kernel_size == 25) && group_input_channels == 1 &&
-      group_output_channels == 1 && groups > 1) {
+  if ((kernel_size == 9 || kernel_size == 25 || kernel_size == 27 /* TODO: Is this right? */) &&
+      group_input_channels == 1 && group_output_channels == 1 && groups > 1) {
     ukernel_type = pytorch_qnnp_ukernel_type_dwconv;
   } else if (
       kernel_size == 1 && subsampling_height == 1 && subsampling_width == 1 &&
@@ -354,6 +354,9 @@ enum pytorch_qnnp_status pytorch_qnnp_create_convolution3d_ndhwc_q8(
               (char*)convolution->packed_weights +
                   (20 + sizeof(int32_t) / sizeof(uint8_t)) * c_stride,
               false);
+          break;
+        case 27:
+          // TODO
           break;
         default:
           PYTORCH_QNNP_UNREACHABLE;
@@ -707,8 +710,13 @@ enum pytorch_qnnp_status pytorch_qnnp_setup_convolution_ndhwc_q8(
       }
       convolution->indirection_buffer = indirection_buffer;
 
-      pytorch_qnnp_indirection_init_dwconv2d(
+      if (kernel_size == 27) {
+        pytorch_qnnp_indirection_init_dwconv3d(
           convolution, 0, step_height, step_width);
+      } else {
+        pytorch_qnnp_indirection_init_dwconv2d(
+          convolution, 0, step_height, step_width);
+      }
       return pytorch_qnnp_status_success;
     }
     default:

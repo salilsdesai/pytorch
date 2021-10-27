@@ -133,7 +133,8 @@ struct PackedConvWeightsQnnp : public ConvPackedParamsBase<kSpatialDim> {
       ukernel_type = pytorch_qnnp_ukernel_type_conv;
     } else {
       ukernel_type = pytorch_qnnp_ukernel_type_none;
-      if (kSpatialDim == 2 && (kernel_size == 9 || kernel_size == 25) &&
+      if (((kSpatialDim == 2 && (kernel_size == 9 || kernel_size == 25)) ||
+            (kSpatialDim == 3 && kernel_size == 27)) &&
           group_input_channels == 1 && group_output_channels == 1 &&
           groups > 1) {
         ukernel_type = pytorch_qnnp_ukernel_type_dwconv;

@@ -609,6 +609,7 @@ struct pytorch_qnnp_parameters {
   struct pytorch_q8conv_xzp_parameters q8conv_xzp;
   struct pytorch_q8dwconv_up_parameters q8dw9;
   struct pytorch_q8dwconv_mp_parameters q8dw25;
+  struct pytorch_q8dwconv_mp_parameters q8dw27;
   struct pytorch_q8sum_rows_parameters q8sum_rows;
   pytorch_q8vadd_ukernel_function q8vadd;
   struct pytorch_q8gavgpool_parameters q8gavgpool;

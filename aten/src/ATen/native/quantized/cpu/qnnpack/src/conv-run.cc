@@ -433,6 +433,41 @@ enum pytorch_qnnp_status qnnpackConv(
               convolution->output_height);
           break;
         }
+        case 27: {
+          // TODO: Update
+          struct q8dwconv_context context = {
+              .groups = groups,
+              .group_stride = group_stride,
+              .indirection_buffer =
+                  (const uint8_t**)convolution->indirection_buffer,
+              .indirection_buffer_row_stride = kernel_size +
+                  (convolution->output_width * width_step - 1) * kernel_height,
+              .indirection_buffer_col_stride =
+                  kernel_height * width_step * sizeof(void*),
+              .packed_weights = packed_weights,
+              .output = output,
+              .output_height = convolution->output_height,
+              .output_width = convolution->output_width,
+              .output_row_stride =
+                  convolution->output_width * output_pixel_stride,
+              .output_col_increment =
+                  (output_pixel_stride - groups) * sizeof(uint8_t),
+              .quantization_params = conv_quantization_params,
+              .unipass_ukernel = convolution->per_channel // What is this for??
+                  ? pytorch_qnnp_params.q8dw9.updw_per_channel
+                  : pytorch_qnnp_params.q8dw9.updw,
+              .multipass_ukernel = convolution->per_channel
+                  ? pytorch_qnnp_params.q8dw27.mpdw_per_channel
+                  : pytorch_qnnp_params.q8dw27.mpdw,
+          };
+          pthreadpool_compute_2d(
+              threadpool,
+              (pthreadpool_function_2d_t)compute_dwconv_multiipass,
+              &context,
+              batch_size,
+              convolution->output_height);
+          break;
+        }
         default:
           PYTORCH_QNNP_UNREACHABLE;
       }
