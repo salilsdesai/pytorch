@@ -690,15 +690,43 @@ enum pytorch_qnnp_status pytorch_qnnp_setup_convolution_ndhwc_q8(
       const size_t kernel_height = convolution->kernel_height;
       const size_t kernel_width = convolution->kernel_width;
       const size_t kernel_size = kernel_depth * kernel_height * kernel_width;
+      const size_t output_depth = convolution->output_depth;
       const size_t output_height = convolution->output_height;
       const size_t output_width = convolution->output_width;
+
+      // Number of kernel columns to traverse to move from the index of an
+      // output pixel in the indirection buffer to that of the output pixel
+      // directly after it
+      // i.e. if indirection_buffer[j] points to the first input pixel used to
+      // compute the i'th output pixel, then
+      // indirection_buffer[j + (kernel_height * step_width)] points to the
+      // first input pixel used to compute the (i + 1)'th output pixel
+      // When dilation is 1: if neighboring output pixels use overlapping
+      // regions of the input, this overlap is not included in the indireciton
+      // buffer (saving some space), hence step width is set to stride width
       const size_t step_width = convolution->dilation_width == 1
           ? convolution->stride_width
           : kernel_width;
+
+      // Number of indices (not kernel columns- different than step width) to
+      // traverse to move from the index of an output pixel in the indirection
+      // buffer to that of the output pixel one ROW (one output y) after it
+      // i.e. if indirection_buffer[j] points to the first input pixel used to
+      // compute the i'th output pixel, then
+      // indirection_buffer[j + step_height] points to the first
+      // input pixel used to compute the output pixel one row below-
+      // the (i + output_width)'th output pixel
+      // Some extra padding is included- for this to be tight it could be
+      // (output_width - 1) * step_width instead of
+      // (output_width * step_width - 1)
       const size_t step_height =
           kernel_size + (output_width * step_width - 1) * kernel_height;
+
+      // Same as step height but for a slice rather than a row
+      const size_t step_depth = step_height * output_height;
+
       const size_t indirection_buffer_size =
-          sizeof(void*) * batch_size * output_height * step_height;
+          sizeof(void*) * batch_size * output_depth * step_depth;
 
       const void** indirection_buffer = (const void**)realloc(
           convolution->indirection_buffer, indirection_buffer_size);
@@ -712,7 +740,7 @@ enum pytorch_qnnp_status pytorch_qnnp_setup_convolution_ndhwc_q8(
 
       if (kernel_size == 27) {
         pytorch_qnnp_indirection_init_dwconv3d(
-          convolution, 0, step_height, step_width);
+          convolution, 0, step_depth, step_height, step_width);
       } else {
         pytorch_qnnp_indirection_init_dwconv2d(
           convolution, 0, step_height, step_width);

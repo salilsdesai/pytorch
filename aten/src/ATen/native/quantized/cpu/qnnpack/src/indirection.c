@@ -199,9 +199,95 @@ void pytorch_qnnp_indirection_init_dwconv2d(
 void pytorch_qnnp_indirection_init_dwconv3d(
     pytorch_qnnp_operator_t op,
     size_t batch_start,
+    size_t step_depth,
     size_t step_height,
     size_t step_width) {
-  // TODO
+  const void** indirection_buffer = op->indirection_buffer;
+  const void* input = op->input;
+  const size_t input_pixel_stride = op->input_pixel_stride;
+  const void* zero = op->zero_pointer;
+  const size_t batch_size = op->batch_size;
+  const size_t input_depth = op->input_depth;
+  const size_t input_height = op->input_height;
+  const size_t input_width = op->input_width;
+  const size_t output_depth = op->output_depth;
+  const size_t output_height = op->output_height;
+  const size_t output_width = op->output_width;
+  const size_t kernel_depth = op->kernel_depth;
+  const size_t kernel_height = op->kernel_height;
+  const size_t kernel_width = op->kernel_width;
+  const size_t stride_depth = op->stride_depth;
+  const size_t stride_height = op->stride_height;
+  const size_t stride_width = op->stride_width;
+  const size_t dilation_depth = op->dilation_depth;
+  const size_t dilation_height = op->dilation_height;
+  const size_t dilation_width = op->dilation_width;
+  const size_t input_padding_front = op->input_padding_front;
+  const size_t input_padding_top = op->input_padding_top;
+  const size_t input_padding_left = op->input_padding_left;
+
+  #define DW_CONV_3D_INDEX                                                     \
+    /* Output Pixel */                                                         \
+    (image * output_depth + output_z) * step_depth + /* slice */               \
+    output_y * step_height + /* row */                                         \
+    output_x * step_width * kernel_height + /* column */                       \
+    /* Kernel */                                                               \
+    kernel_x * kernel_depth * kernel_height + /* column */                     \
+    kernel_y * kernel_depth + /* row */                                        \
+    kernel_z /* slice */
+
+  for (size_t image = batch_start; image < batch_size; image++) {
+    for (size_t output_z = 0; output_z < output_depth; output_z++) {
+      for (size_t kernel_z = 0; kernel_z < kernel_depth; kernel_z++) {
+        const size_t input_z = output_z * stride_depth +
+            kernel_z * dilation_depth - input_padding_front;
+        if (input_z < input_depth) {
+          for (size_t output_y = 0; output_y < output_height; output_y++) {
+            for (size_t kernel_y = 0; kernel_y < kernel_height; kernel_y++) {
+              const size_t input_y = output_y * stride_height +
+                  kernel_y * dilation_height - input_padding_top;
+              if (input_y < input_height) {
+                for (size_t output_x = 0; output_x < output_width; output_x++) {
+                  for (size_t kernel_x = 0; kernel_x < kernel_width; kernel_x++) {
+                    const size_t input_x = output_x * stride_width +
+                        kernel_x * dilation_width - input_padding_left;
+                    const size_t index = DW_CONV_3D_INDEX;
+                    if (input_x < input_width) {
+                      indirection_buffer[index] = (char*)input + (
+                        (image * input_depth + input_z) * input_height + // slice
+                        input_y * input_width + // row
+                        input_x // column
+                      ) * input_pixel_stride;
+                    } else {
+                      indirection_buffer[index] = zero;
+                    }
+                  }
+                }
+              } else {
+                for (size_t output_x = 0; output_x < output_width; output_x++) {
+                  for (size_t kernel_x = 0; kernel_x < kernel_width; kernel_x++) {
+                    const size_t index = DW_CONV_3D_INDEX;
+                    indirection_buffer[index] = zero;
+                  }
+                }
+              }
+            }
+          }
+        } else {
+          for (size_t output_y = 0; output_y < output_height; output_y++) {
+            for (size_t kernel_y = 0; kernel_y < kernel_height; kernel_y++) {
+              for (size_t output_x = 0; output_x < output_width; output_x++) {
+                for (size_t kernel_x = 0; kernel_x < kernel_width; kernel_x++) {
+                  const size_t index = DW_CONV_3D_INDEX;
+                  indirection_buffer[index] = zero;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
 }
 
 
