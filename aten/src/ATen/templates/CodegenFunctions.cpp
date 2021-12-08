@@ -19,7 +19,6 @@
 #include <utility>
 #include <vector>
 namespace at {
-namespace unboxing {
 using at::Scalar;
 using at::ScalarType;
 using at::Tensor;
@@ -50,5 +49,4 @@ std::array<T, N> as_array(const c10::List<c10::IValue>& list) {
 // Generated function declaration
 ${definitions}
 
-} // namespace unboxing
 } // namespace at

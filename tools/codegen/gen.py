@@ -408,10 +408,20 @@ class ComputeUnboxingFunctions:
         Literal[Target.DEFINITION]
     ]
 
+    backend_indices: Dict[DispatchKey, BackendIndex]
+
     @method_with_native_function
     def __call__(self, f: NativeFunction) -> str:
         sig_group = CppSignatureGroup.from_native_function(f, method=False, fallback_binding=f.manual_cpp_binding)
         sig = sig_group.most_faithful_signature()
+
+        to_snake_case = lambda s: "".join([("_" if (i > 0 and s[i].isupper() and s[i-1].islower()) else "") + s[i] for i in range(len(s))]).lower()
+        backend_kernels = [
+            (dispatch_key.name, backend_index.get_kernel(f).kernel)
+            for (dispatch_key, backend_index) in self.backend_indices.items()
+            if backend_index.has_kernel(f)
+        ]
+        unambiguous_name = f.func.name.unambiguous_name()
 
         if self.target is Target.DECLARATION:
             # Note [The ATen Codegen Unboxing API]
@@ -425,9 +435,15 @@ class ComputeUnboxingFunctions:
             #     For example: if it followed the C++ API, then all of the faithful C++ factory functions
             #     would need to wrap their arguments into TensorOptions only to unwrap them again.
             # (2) Under the hood it calls C++ API.
+            per_backend_declarations = "\n".join(
+                f"namespace {to_snake_case(dispatch_key)} {{ namespace unboxing {{ TORCH_API void {unambiguous_name}_{dispatch_key}(Stack & stack); }} }}"
+                for (dispatch_key, kernel) in backend_kernels
+            )
+
             return f"""
 // aten::{f.func}
-TORCH_API void {f.func.name.unambiguous_name()}(Stack & stack);
+namespace unboxing {{ TORCH_API void {unambiguous_name}(Stack & stack); }}
+{per_backend_declarations}
 """
         else:
             # gather all the arguments from native function, including "out"
@@ -437,7 +453,7 @@ TORCH_API void {f.func.name.unambiguous_name()}(Stack & stack);
             arguments = unboxing.convert_arguments(args, f.func.arguments.tensor_options)
 
             # for each C++ argument, generate the conversion code
-            code_connector = "\n\t"
+            code_connector = "\n\t\t"
             code_list = []
             for arg in arguments:
                 code_list.extend(arguments[arg].code)
@@ -446,13 +462,29 @@ TORCH_API void {f.func.name.unambiguous_name()}(Stack & stack);
             # function call and push back to stack
             func_call_and_push = code_connector.join(unboxing.generate_unboxed_kernel_call(f, sig, arguments))
 
+            per_backend_definitions = "\n".join(
+                f"""
+namespace {to_snake_case(dispatch_key)} {{ namespace unboxing {{
+    TORCH_API void {unambiguous_name}_{dispatch_key}(Stack & stack) {{
+       {code}
+        drop(stack, {len(args)});
+        {code_connector.join(unboxing.generate_unboxed_kernel_call(f, sig, arguments, kernel))}
+    }}
+}} }}
+"""
+                for (dispatch_key, kernel) in backend_kernels
+            )
+
             return f"""
 // aten::{f.func}
-TORCH_API void {f.func.name.unambiguous_name()}(Stack & stack) {{
-    {code}
-    drop(stack, {len(args)});
-    {func_call_and_push}
+namespace unboxing {{
+    TORCH_API void {unambiguous_name}(Stack & stack) {{
+        {code}
+        drop(stack, {len(args)});
+        {func_call_and_push}
+    }}
 }}
+{per_backend_definitions}
 """
 
 # Generates RedispatchFunctions.h.
@@ -1381,13 +1413,14 @@ def main() -> None:
         native_functions,
         key_fn=key_func,
         env_callable=lambda fn: {
-            'definitions': [ComputeUnboxingFunctions(Target.DEFINITION)(fn)]},
+            'definitions': [ComputeUnboxingFunctions(Target.DEFINITION,
+                backend_indices)(fn)]},
         num_shards=5,
         sharded_keys={'definitions'}
     )
     cpu_fm.write('CodegenFunctions.h', lambda: {
         'declarations': list(mapMaybe(ComputeUnboxingFunctions(
-            Target.DECLARATION), native_functions)),
+            Target.DECLARATION, backend_indices), native_functions)),
     })
 
     cpu_fm.write('Functions.h', lambda: {

@@ -209,7 +209,7 @@ for (c10::IValue {elem_name}: {in_name}) {{
 
 
 # Generate code to call C++ unboxed kernel with argument variable names
-def generate_unboxed_kernel_call(f: NativeFunction, sig: CppSignature, arguments: Dict[str, ArgumentCppCode]) -> List[str]:
+def generate_unboxed_kernel_call(f: NativeFunction, sig: CppSignature, arguments: Dict[str, ArgumentCppCode], kernel_name: str = None) -> List[str]:
     use_tensor_options = any(
         isinstance(a.nctype.type, BaseCType) and a.nctype.type.type == tensorOptionsT for a in sig.arguments())
     arg_connector = ",\n\t"
@@ -239,9 +239,10 @@ pack(stack, std::move(result_));
 );
     """
     else:
+        kernel_call = f"{namespace}::{sig.name()}" if kernel is None else f"at::native::{kernel_name}"  # kernels for which are "structured" (see register_dispatch_key.py) plus some exceptions must be treated differently rather than using at::native::{}. Exceptions: norm_out, special_xlog1py_out, xlogy_out, special_zeta_out, max_out, bitwise_xor_out, gather_out, cumprod_out, cumsum_out, sum_out, bitwise_left_shift_out, remainder_out, scatter_add, mean_out, fmod_out, clamp_out, bitwise_and_out, bitwise_or_out, any_out, copysign_out, bitwise_right_shift_out, prod_out, min_out, all_out
         arg_list = arg_connector.join([arguments[a.name].val_name for a in sig.arguments()])
         function_call = f"""
-{ret_str}{namespace}::{sig.name()}(
+{ret_str}{kernel_call}(
     {arg_list}
 );
     """
