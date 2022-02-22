@@ -31,6 +31,9 @@ struct LinearPackedParamsBase : public torch::jit::CustomClassHolder {
   virtual at::Tensor apply_dynamic(const at::Tensor& input) = 0;
   virtual at::Tensor apply_dynamic_relu(const at::Tensor& input) = 0;
 
+  virtual std::string backend_name() = 0;
+  virtual void print_debug() = 0;
+
   virtual LinearPackedSerializationType unpack() = 0;
 
   virtual c10::optional<at::Tensor> bias() = 0;

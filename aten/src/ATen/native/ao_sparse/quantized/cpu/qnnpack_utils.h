@@ -2,6 +2,8 @@
 
 #include <ATen/Tensor.h>
 #include <c10/core/QScheme.h>
+#include <iostream>
+#include <string>
 
 #ifdef USE_PYTORCH_QNNPACK
 // TODO: Refacto qnnpack_utils.h so as to separate code
@@ -50,6 +52,9 @@ struct TORCH_API PackedLinearWeightQnnp
 
   at::Tensor apply_dynamic(const at::Tensor& input) override;
   at::Tensor apply_dynamic_relu(const at::Tensor& input) override;
+
+  std::string backend_name() override;
+  void print_debug() override;
 
   LinearPackedSerializationType unpack() override;
 

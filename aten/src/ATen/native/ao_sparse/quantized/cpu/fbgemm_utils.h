@@ -2,6 +2,8 @@
 
 #include <ATen/Tensor.h>
 #include <c10/core/QScheme.h>
+#include <iostream>
+#include <string>
 
 #ifdef USE_FBGEMM
 #include <fbgemm/Fbgemm.h>
@@ -60,6 +62,9 @@ struct TORCH_API PackedLinearWeight
         "supported on qnnpack backend.");
     return at::Tensor();
   }
+
+  std::string backend_name() override;
+  void print_debug() override;
 
   LinearPackedSerializationType unpack() override;
 

@@ -119,6 +119,45 @@ c10::intrusive_ptr<LinearPackedParamsBase> PackedLinearWeight::
   return ret_ptr;
 }
 
+std::string PackedLinearWeight::backend_name() {
+  return "fbgemm";
+}
+
+void PackedLinearWeight::print_debug() {
+  std::cout << "--------------------------------" << std::endl;
+
+  std::cout << "col_offsets: " << col_offsets.size() << " [ ";
+  for (int32_t co : col_offsets) { std::cout << co << " "; }
+  std::cout << "]" << std::endl;
+
+  std::cout << "[BCSR] row_offsets: " << w->row_offsets.size() << " [ ";
+  for (int32_t x : w->row_offsets) { std::cout << x << " "; }
+  std::cout << "]" << std::endl;
+
+  std::cout << "[BCSR] values: " << w->values.size() << " [ ";
+  for (int8_t x : w->values) { std::cout << (int)(x) << " "; }
+  std::cout << "]" << std::endl;
+
+  std::cout << "[BCSR] rowBPtr: " << w->rowBPtr.size() << " [ ";
+  for (int x : w->rowBPtr) { std::cout << x << " "; }
+  std::cout << "]" << std::endl;
+
+  std::cout << "[BCSR] colBIdx: " << w->colBIdx.size() << " [ ";
+  for (int x : w->colBIdx) { std::cout << x << " "; }
+  std::cout << "]" << std::endl;
+
+  std::cout << "RB: " << w->RB << std::endl;
+  std::cout << "CB: " << w->CB << std::endl;
+
+  std::cout << "R: " << w->R << std::endl;
+  std::cout << "C: " << w->C << std::endl;
+
+  std::cout << "out_features_block_size: " << out_features_block_size_ << std::endl;
+  std::cout << "in_features_block_size: " << in_features_block_size_ << std::endl;
+
+  std::cout << "--------------------------------" << std::endl;
+}
+
 #endif // USE_FBGEMM
 
 #ifdef USE_PYTORCH_QNNPACK
@@ -195,6 +234,37 @@ PackedLinearWeightQnnp::PackedLinearWeightQnnp(
       in_features_block_size,
       w_zero_points_.data());
 }
+
+std::string PackedLinearWeightQnnp::backend_name() {
+  return "qnnpack";
+}
+
+void PackedLinearWeightQnnp::print_debug() {
+  std::cout << "--------------------------------" << std::endl;
+
+  std::cout << "out_features_block_size: " << out_features_block_size_ << std::endl;
+  std::cout << "in_features_block_size: " << in_features_block_size_ << std::endl;
+
+  std::cout << "[BCSR] values: " << bcsr_matrix_->values.size() << " [ ";
+  for (uint8_t x : bcsr_matrix_->values) { std::cout << (int)(x) << " "; }
+  std::cout << "]" << std::endl;
+
+  std::cout << "[BCSR] row_values: " << bcsr_matrix_->row_values.size() << " [ ";
+  for (uint32_t x : bcsr_matrix_->row_values) { std::cout << x << " "; }
+  std::cout << "]" << std::endl;
+
+  std::cout << "[BCSR] col_indices: " << bcsr_matrix_->col_indices.size() << " [ ";
+  for (uint32_t x : bcsr_matrix_->col_indices) { std::cout << x << " "; }
+  std::cout << "]" << std::endl;
+
+  std::cout << "[BCSR] row_block_size: " << bcsr_matrix_->row_block_size << std::endl;
+  std::cout << "[BCSR] col_block_size: " << bcsr_matrix_->col_block_size << std::endl;
+
+  std::cout << "Bias: " << bias_ << std::endl;
+
+  std::cout << "w_scales_" << w_scales_ << std::endl;
+}
+
 #endif // USE_PYTORCH_QNNPACK
 
 namespace {
