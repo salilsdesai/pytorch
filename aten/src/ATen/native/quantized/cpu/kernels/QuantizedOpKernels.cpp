@@ -2789,7 +2789,7 @@ void quantize_tensor_arm(
 // quantize_val
 // TODO Update quantize_tensor_arm implementation to follow quantize_val,
 // i.e. f = Round(value/scale + zero_point)
-// TODO Make quantize_tensor_arm work for other datatypes too (int8, int32).
+// TODO Make quantize_tensor_arm work for int32 datatype too.
 template <>
 void quantize_tensor_arm<c10::quint8>(
     const float* __restrict__ in,
@@ -2850,6 +2850,66 @@ void quantize_tensor_arm<c10::quint8>(
         vqmovn_high_s32(vqmovn_s32(v0123_rounded), v4567_rounded), vzero_point);
     const uint8x8_t vout01234567 = vqmovun_s16(v01234567_packed);
     vst1_u8(out_underlying, vout01234567);
+    out_underlying += 8;
+  }
+  for (; i < N; ++i) {
+    (*out_underlying++) = at::native::quantize_val_arm(scale, zero_point, (*in++));
+  }
+#endif
+}
+
+template <>
+void quantize_tensor_arm<c10::qint8>(
+    const float* __restrict__ in,
+    c10::qint8* __restrict__ out,
+    const int64_t N,
+    const float scale,
+    const int32_t zero_point) {
+  const float inv_scale = 1.0f / scale;
+  uint32_t i = 0;
+  int8_t* out_underlying = reinterpret_cast<int8_t*>(out);
+  const float32x4_t vinv_scale = vdupq_n_f32(inv_scale);
+#if defined(__ARM_NEON__)
+  // Based off of quint8 variant of quantize_tensor_arm above.
+  // For explanation, see
+  // https://github.com/pytorch/pytorch/blob/111e52c5d71b6f34e950d6be4df678fcef4e9f1e/aten/src/ATen/native/quantized/cpu/kernels/QuantizedOpKernels.cpp#L2805-L2815
+  const int32x4_t voffset = vdupq_n_s32(zero_point - 0x4B400000);
+  const float32x4_t vmagic_float = vdupq_n_f32(12582912.0f);
+  for (i = 0; i + 8 <= N; i += 8) {
+    const float32x4_t vin0123 = vld1q_f32(in);
+    in += 4;
+    const float32x4_t vin4567 = vld1q_f32(in);
+    in += 4;
+    const int32x4_t vraw0123 = vaddq_s32(
+        voffset,
+        vreinterpretq_s32_f32(
+            vaddq_f32(vmagic_float, vmulq_f32(vin0123, vinv_scale))));
+    const int32x4_t vraw4567 = vaddq_s32(
+        voffset,
+        vreinterpretq_s32_f32(
+            vaddq_f32(vmagic_float, vmulq_f32(vin4567, vinv_scale))));
+    const int16x8_t vraw01234567 =
+        vcombine_s16(vqmovn_s32(vraw0123), vqmovn_s32(vraw4567));
+    const int8x8_t vout01234567 = vqmovn_s16(vraw01234567);
+    vst1_s8(out_underlying, vout01234567);
+    out_underlying += 8;
+  }
+  for (; i < N; ++i) {
+    (*out_underlying++) = at::native::quantize_val_arm(scale, zero_point, (*in++));
+  }
+#else
+  const int16x8_t vzero_point = vdupq_n_s16((int16_t)(uint16_t)zero_point);
+  for (i = 0; i + 8 <= N; i += 8) {
+    const float32x4_t vin0123 = vld1q_f32(in);
+    in += 4;
+    const float32x4_t vin4567 = vld1q_f32(in);
+    in += 4;
+    const int32x4_t v0123_rounded = vcvtnq_s32_f32(vmulq_f32(vin0123, vinv_scale));
+    const int32x4_t v4567_rounded = vcvtnq_s32_f32(vmulq_f32(vin4567, vinv_scale));
+    const int16x8_t v01234567_packed = vqaddq_s16(
+        vqmovn_high_s32(vqmovn_s32(v0123_rounded), v4567_rounded), vzero_point);
+    const int8x8_t vout01234567 = vqmovn_s16(v01234567_packed);
+    vst1_s8(out_underlying, vout01234567);
     out_underlying += 8;
   }
   for (; i < N; ++i) {
