@@ -2854,7 +2854,7 @@ void quantize_tensor_arm<c10::quint8>(
     out_underlying += 8;
   }
   for (; i < N; ++i) {
-    (*out_underlying++) = at::native::quantize_val_arm<uint8_t>(scale, zero_point, (*in++));
+    (*out_underlying++) = at::native::quantize_val_arm(scale, zero_point, (*in++));
   }
 #else
   const int16x8_t vzero_point = vdupq_n_s16((int16_t)(uint16_t)zero_point);
@@ -2872,29 +2872,10 @@ void quantize_tensor_arm<c10::quint8>(
     out_underlying += 8;
   }
   for (; i < N; ++i) {
-    (*out_underlying++) = at::native::quantize_val_arm<uint8_t>(scale, zero_point, (*in++));
+    (*out_underlying++) = at::native::quantize_val_arm(scale, zero_point, (*in++));
   }
 #endif
 }
-
-// template <typename T>
-// T quantize_val_arm_e(double scale, int64_t zero_point, float value) {
-//     // std::nearbyint results in nearest integer value according to the current
-//     // rounding mode and the default rounding mode is rounds to even in half-way
-//     // cases in most popular processor architectures like x86 and ARM. This is
-//     // typically faster than an alternatives like std::round that rounds half-way
-//     // cases away from zero, and can be consistent with SIMD implementations for
-//     // example in x86 using _mm512_cvtps_epi32 or mm512_round_ps with
-//     // _MM_FROUND_CUR_DIRECTION option that also follow the current rounding mode.
-//     int64_t qvalue;
-//     constexpr int64_t qmin = std::numeric_limits<T>::min();
-//     constexpr int64_t qmax = std::numeric_limits<T>::max();
-//     float inv_scale = 1.0f / static_cast<float>(scale);
-//     qvalue = static_cast<int64_t>(zero_point + std::nearbyint(value * inv_scale));
-//     qvalue = std::max<int64_t>(qvalue, qmin);
-//     qvalue = std::min<int64_t>(qvalue, qmax);
-//     return static_cast<T>(qvalue);
-// }
 
 template <>
 void quantize_tensor_arm<c10::qint8>(
@@ -2933,7 +2914,7 @@ void quantize_tensor_arm<c10::qint8>(
     out_underlying += 8;
   }
   for (; i < N; ++i) {
-    (*out_underlying++) = at::native::quantize_val_arm<int8_t>(scale, zero_point, (*in++));
+    (*out_underlying++) = at::native::quantize_val_arm_s(scale, zero_point, (*in++));
   }
 #else
   const int16x8_t vzero_point = vdupq_n_s16((int16_t)(uint16_t)zero_point);
@@ -2951,7 +2932,7 @@ void quantize_tensor_arm<c10::qint8>(
     out_underlying += 8;
   }
   for (; i < N; ++i) {
-    (*out_underlying++) = quantize_val_arm<int8_t>(scale, zero_point, (*in++));
+    (*out_underlying++) = quantize_val_arm_s(scale, zero_point, (*in++));
   }
 #endif
 }
@@ -3275,7 +3256,7 @@ void quantize_tensor_per_channel_impl<c10::quint8>(
         }
         for (; c < channels; ++c) {
           (*out++) =
-              at::native::quantize_val_arm<uint8_t>(scales_data[c], zero_points_data[c], (*in++));
+              at::native::quantize_val_arm(scales_data[c], zero_points_data[c], (*in++));
         }
       }
     }
@@ -3306,7 +3287,7 @@ void quantize_tensor_per_channel_impl<c10::quint8>(
         }
         for (; e < elements_per_channel; ++e) {
           (*out++) =
-              at::native::quantize_val_arm<uint8_t>(scales_data[c], zero_points_data[c], (*in++));
+              at::native::quantize_val_arm(scales_data[c], zero_points_data[c], (*in++));
         }
       }
     }
@@ -3353,7 +3334,7 @@ void quantize_tensor_per_channel_impl<c10::quint8>(
         }
         for (; c < channels; ++c) {
           (*out++) =
-              at::native::quantize_val_arm<uint8_t>(scales_data[c], zero_points_data[c], (*in++));
+              at::native::quantize_val_arm(scales_data[c], zero_points_data[c], (*in++));
         }
       }
     }
@@ -3381,7 +3362,7 @@ void quantize_tensor_per_channel_impl<c10::quint8>(
         }
         for (; e < elements_per_channel; ++e) {
           (*out++) =
-              at::native::quantize_val_arm<uint8_t>(scales_data[c], zero_points_data[c], (*in++));
+              at::native::quantize_val_arm(scales_data[c], zero_points_data[c], (*in++));
         }
       }
     }
