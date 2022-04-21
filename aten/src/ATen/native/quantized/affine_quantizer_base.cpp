@@ -115,12 +115,13 @@ T quantize_val(double scale, int64_t zero_point, float value) {
   return static_cast<T>(qvalue);
 }
 
-uint8_t quantize_val_arm(
+template <typename T>
+T quantize_val_arm(
     const float scale,
     const int32_t zero_point,
     const float value) {
-  constexpr int32_t qmin = std::numeric_limits<uint8_t>::min();
-  constexpr int32_t qmax = std::numeric_limits<uint8_t>::max();
+  constexpr int32_t qmin = std::numeric_limits<T>::min();
+  constexpr int32_t qmax = std::numeric_limits<T>::max();
   float inv_scale = 1.0f / scale;
 #ifndef _MSC_VER
   auto r = static_cast<int32_t>(Round(value * inv_scale));
@@ -135,29 +136,7 @@ uint8_t quantize_val_arm(
 #endif
   r = std::max(r, qmin);
   r = std::min(r, qmax);
-  return static_cast<uint8_t>(r);
-}
-int8_t quantize_val_arm_s(
-    const float scale,
-    const int32_t zero_point,
-    const float value) {
-  constexpr int32_t qmin = std::numeric_limits<int8_t>::min();
-  constexpr int32_t qmax = std::numeric_limits<int8_t>::max();
-  float inv_scale = 1.0f / scale;
-#ifndef _MSC_VER
-  auto r = static_cast<int32_t>(Round(value * inv_scale));
-  // builtin_add_overflow() returns true in case of overflow
-  if (__builtin_add_overflow(zero_point, r, &r)) {
-    // zero_point must be a non-negative value between qmin and qmax,
-    // i.e. only overflow can happen.
-    r = qmax;
-  }
-#else
-  auto r = zero_point + static_cast<int32_t>(Round(value * inv_scale));
-#endif
-  r = std::max(r, qmin);
-  r = std::min(r, qmax);
-  return static_cast<int8_t>(r);
+  return static_cast<T>(r);
 }
 
 template <typename T, int precision>
@@ -226,6 +205,14 @@ template TORCH_API quint8
 quantize_val<quint8>(double scale, int64_t zero_point, float value);
 template TORCH_API qint32
 quantize_val<qint32>(double scale, int64_t zero_point, float value);
+template uint8_t quantize_val_arm<uint8_t>(
+    const float scale,
+    const int32_t zero_point,
+    const float value);
+template int8_t quantize_val_arm<int8_t>(
+    const float scale,
+    const int32_t zero_point,
+    const float value);
 template TORCH_API void quantize_vec<c10::qint8>(
     double scale,
     int64_t zero_point,
