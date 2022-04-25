@@ -2804,32 +2804,32 @@ void quantize_tensor_arm(
 }
 
 namespace quantize_tensor_arm_intrinsics {
-  template <typename Tx8>
-  inline Tx8 vqmov(int16x8_t vraw);
+template <typename Tx8>
+C10_ALWAYS_INLINE Tx8 vqmov(int16x8_t vraw);
 
-  template <>
-  inline uint8x8_t vqmov<uint8x8_t>(int16x8_t vraw) {
-    return vqmovun_s16(vraw);
-  }
-
-  template <>
-  inline int8x8_t vqmov<int8x8_t>(int16x8_t vraw) {
-    return vqmovn_s16(vraw);
-  }
-
-  template <typename T, typename Tx8>
-  inline void vst1(T* out, Tx8 vout);
-
-  template<>
-  inline void vst1<uint8_t, uint8x8_t>(uint8_t* out, uint8x8_t vout) {
-    vst1_u8(out, vout);
-  }
-
-  template<>
-  inline void vst1<int8_t, int8x8_t>(int8_t* out, int8x8_t vout) {
-    vst1_s8(out, vout);
-  }
+template <>
+C10_ALWAYS_INLINE uint8x8_t vqmov<uint8x8_t>(int16x8_t vraw) {
+  return vqmovun_s16(vraw);
 }
+
+template <>
+C10_ALWAYS_INLINE int8x8_t vqmov<int8x8_t>(int16x8_t vraw) {
+  return vqmovn_s16(vraw);
+}
+
+template <typename T, typename Tx8>
+C10_ALWAYS_INLINE void vst1(T* out, Tx8 vout);
+
+template <>
+C10_ALWAYS_INLINE void vst1<uint8_t, uint8x8_t>(uint8_t* out, uint8x8_t vout) {
+  vst1_u8(out, vout);
+}
+
+template <>
+C10_ALWAYS_INLINE void vst1<int8_t, int8x8_t>(int8_t* out, int8x8_t vout) {
+  vst1_s8(out, vout);
+}
+} // namespace quantize_tensor_arm_intrinsics
 
 // Specialized implementation from caffe2::Int8Quantize.
 // There may be slight accuracy difference between this and implementation of
@@ -2877,12 +2877,15 @@ void quantize_tensor_arm_q8(
             vaddq_f32(vmagic_float, vmulq_f32(vin4567, vinv_scale))));
     const int16x8_t vraw01234567 =
         vcombine_s16(vqmovn_s32(vraw0123), vqmovn_s32(vraw4567));
-    const underlying_x8_t vout01234567 = quantize_tensor_arm_intrinsics::vqmov<underlying_x8_t>(vraw01234567);
-    quantize_tensor_arm_intrinsics::vst1<underlying_t, underlying_x8_t>(out_underlying, vout01234567);
+    const underlying_x8_t vout01234567 =
+        quantize_tensor_arm_intrinsics::vqmov<underlying_x8_t>(vraw01234567);
+    quantize_tensor_arm_intrinsics::vst1<underlying_t, underlying_x8_t>(
+        out_underlying, vout01234567);
     out_underlying += 8;
   }
   for (; i < N; ++i) {
-    (*out_underlying++) = at::native::quantize_val_arm<underlying_t>(scale, zero_point, (*in++));
+    (*out_underlying++) =
+        at::native::quantize_val_arm<underlying_t>(scale, zero_point, (*in++));
   }
 #else
   const int16x8_t vzero_point = vdupq_n_s16((int16_t)(uint16_t)zero_point);
@@ -2895,12 +2898,16 @@ void quantize_tensor_arm_q8(
     const int32x4_t v4567_rounded = vcvtnq_s32_f32(vmulq_f32(vin4567, vinv_scale));
     const int16x8_t v01234567_packed = vqaddq_s16(
         vqmovn_high_s32(vqmovn_s32(v0123_rounded), v4567_rounded), vzero_point);
-    const underlying_x8_t vout01234567 = quantize_tensor_arm_intrinsics::vqmov<underlying_x8_t>(v01234567_packed);
-    quantize_tensor_arm_intrinsics::vst1<underlying_t, underlying_x8_t>(out_underlying, vout01234567);
+    const underlying_x8_t vout01234567 =
+        quantize_tensor_arm_intrinsics::vqmov<underlying_x8_t>(
+            v01234567_packed);
+    quantize_tensor_arm_intrinsics::vst1<underlying_t, underlying_x8_t>(
+        out_underlying, vout01234567);
     out_underlying += 8;
   }
   for (; i < N; ++i) {
-    (*out_underlying++) = at::native::quantize_val_arm<underlying_t>(scale, zero_point, (*in++));
+    (*out_underlying++) =
+        at::native::quantize_val_arm<underlying_t>(scale, zero_point, (*in++));
   }
 #endif
 }
@@ -2913,7 +2920,7 @@ void quantize_tensor_arm<c10::quint8>(
     const float scale,
     const int32_t zero_point) {
   quantize_tensor_arm_q8<c10::quint8, uint8_t, uint8x8_t>(
-    in, out, N, scale, zero_point);
+      in, out, N, scale, zero_point);
 }
 
 template <>
@@ -2924,7 +2931,7 @@ void quantize_tensor_arm<c10::qint8>(
     const float scale,
     const int32_t zero_point) {
   quantize_tensor_arm_q8<c10::qint8, int8_t, int8x8_t>(
-    in, out, N, scale, zero_point);
+      in, out, N, scale, zero_point);
 }
 
 #if defined(__aarch64__)
@@ -3245,8 +3252,8 @@ void quantize_tensor_per_channel_impl<c10::quint8>(
           out += 8;
         }
         for (; c < channels; ++c) {
-          (*out++) =
-              at::native::quantize_val_arm<uint8_t>(scales_data[c], zero_points_data[c], (*in++));
+          (*out++) = at::native::quantize_val_arm<uint8_t>(
+              scales_data[c], zero_points_data[c], (*in++));
         }
       }
     }
@@ -3276,8 +3283,8 @@ void quantize_tensor_per_channel_impl<c10::quint8>(
           out += 8;
         }
         for (; e < elements_per_channel; ++e) {
-          (*out++) =
-              at::native::quantize_val_arm<uint8_t>(scales_data[c], zero_points_data[c], (*in++));
+          (*out++) = at::native::quantize_val_arm<uint8_t>(
+              scales_data[c], zero_points_data[c], (*in++));
         }
       }
     }
@@ -3323,8 +3330,8 @@ void quantize_tensor_per_channel_impl<c10::quint8>(
           out += 8;
         }
         for (; c < channels; ++c) {
-          (*out++) =
-              at::native::quantize_val_arm<uint8_t>(scales_data[c], zero_points_data[c], (*in++));
+          (*out++) = at::native::quantize_val_arm<uint8_t>(
+              scales_data[c], zero_points_data[c], (*in++));
         }
       }
     }
@@ -3351,8 +3358,8 @@ void quantize_tensor_per_channel_impl<c10::quint8>(
           out += 8;
         }
         for (; e < elements_per_channel; ++e) {
-          (*out++) =
-              at::native::quantize_val_arm<uint8_t>(scales_data[c], zero_points_data[c], (*in++));
+          (*out++) = at::native::quantize_val_arm<uint8_t>(
+              scales_data[c], zero_points_data[c], (*in++));
         }
       }
     }
