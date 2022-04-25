@@ -152,6 +152,14 @@ void quantize_vec(
   }
 }
 
+template TORCH_API uint8_t quantize_val_arm<uint8_t>(
+    const float scale,
+    const int32_t zero_point,
+    const float value);
+template TORCH_API int8_t quantize_val_arm<int8_t>(
+    const float scale,
+    const int32_t zero_point,
+    const float value);
 template <typename T>
 TORCH_API float dequantize_val(double scale, int64_t zero_point, T value) {
   return static_cast<float>(scale) * (value.val_ - static_cast<int32_t>(zero_point));
@@ -205,14 +213,6 @@ template TORCH_API quint8
 quantize_val<quint8>(double scale, int64_t zero_point, float value);
 template TORCH_API qint32
 quantize_val<qint32>(double scale, int64_t zero_point, float value);
-template TORCH_API uint8_t quantize_val_arm<uint8_t>(
-    const float scale,
-    const int32_t zero_point,
-    const float value);
-template TORCH_API int8_t quantize_val_arm<int8_t>(
-    const float scale,
-    const int32_t zero_point,
-    const float value);
 template TORCH_API void quantize_vec<c10::qint8>(
     double scale,
     int64_t zero_point,
