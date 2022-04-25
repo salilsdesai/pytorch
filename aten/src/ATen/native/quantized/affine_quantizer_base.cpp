@@ -152,11 +152,11 @@ void quantize_vec(
   }
 }
 
-template TORCH_API uint8_t quantize_val_arm<uint8_t>(
+template uint8_t quantize_val_arm<uint8_t>(
     const float scale,
     const int32_t zero_point,
     const float value);
-template TORCH_API int8_t quantize_val_arm<int8_t>(
+template int8_t quantize_val_arm<int8_t>(
     const float scale,
     const int32_t zero_point,
     const float value);
