@@ -29,6 +29,27 @@
 namespace torch {
 namespace jit {
 
+TEST(LiteInterpreterTest, ValidateModel) {
+  std::string full_model =
+      "/Users/salilsdesai/pytorch/test_model.ptl";
+
+  Module jit_module = load(full_model);
+  torch::jit::enableMobileInterfaceCallExport();
+  std::string tmp_model_path = "/Users/salilsdesai/pytorch/test_model_2.ptl";
+  jit_module._save_for_mobile(tmp_model_path);
+
+  mobile::Module m_module = _load_for_mobile(tmp_model_path);
+  // mobile::Module m_module = _load_for_mobile(full_model);
+  auto get_method = m_module.find_method("get_all_bundled_inputs");
+  auto inputs = m_module.run_method("get_all_bundled_inputs")
+                    .toList()
+                    .get(0)
+                    .toTupleRef()
+                    .elements();
+  std::cout << "running lite inteprteter : " << std::endl;
+  m_module.forward(inputs);
+}
+
 TEST(LiteInterpreterTest, UpsampleNearest2d) {
   Module m("m");
   m.define(R"(
